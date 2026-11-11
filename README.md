@@ -1,5 +1,9 @@
 # TradeBunny: Grid Pilot
 
+![Status: in progress](https://img.shields.io/badge/status-in%20progress-orange)
+
+**Work in progress.** Running on paper while I test it; no real money.
+
 **A spot grid-trading system for crypto, built to measure before it trades.** It finds markets that move a lot but go nowhere, proposes a grid of buy and sell orders, and only runs a plan a human has approved. It trades on paper by default.
 
 > The source code is private because it connects to an exchange account. This page describes the design and the rules it enforces.
