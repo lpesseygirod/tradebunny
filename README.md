@@ -6,9 +6,11 @@ TradeBunny is a crypto grid-trading system. A grid puts buy orders below the pri
 
 So most of this project is about **measuring before trading**: it rejects almost every market, and it tells you exactly why.
 
+The measuring gave a clear answer: **the strategy has no real edge, so I retired it.** Before running the final test I wrote down the rule that would decide it, and when the numbers came in I followed the rule ([the result](#the-result-no-edge-so-i-retired-it)).
+
 ![An offline scan: every coin rejected, each with its reasons](docs/media/scan.png)
 
-> Status: the analyst, backtester, executor, risk rules and app are built, with 1,279 tests. It trades on **paper**: a simulated exchange that fills orders at live OKX prices. It has not traded real money, and the client that would send real orders to OKX is not built.
+> Status: **retired on 14 September 2026**, by a pass/fail rule I wrote before seeing the results. Everything is built and kept as the record: the analyst, backtester, executor, risk rules and app, with 1,279 tests. Paper trading works end to end (a simulated exchange that fills orders at live OKX prices), but the analyst correctly proposes nothing. It has never traded real money, and the client that would send real orders to OKX was never built.
 
 **Try it offline** (no API key, no exchange, real OKX candles saved in `examples/`):
 
@@ -48,7 +50,7 @@ There's no AI inside. At first an AI wrote a short summary of each plan, but I r
 - It only picks markets that move a lot but don't trend (Hurst exponent, ADX, efficiency ratio and an ADF test, in [`metrics.py`](src/grid/metrics.py))
 - If something can't be read, everything stops: three kill switches that fail closed ([`control.py`](src/grid/control.py))
 - Caps on how many grids run at once and how much each one may commit. The executor re-checks them on every pass and holds back any grid over a cap (`admit` in [`executor.py`](src/grid/executor.py))
-- Paper only for now. Live trading would also need an extra confirmation phrase
+- Paper only. The live order client was never built, and arming it would also need an extra confirmation phrase
 
 ## Testing a strategy honestly
 
@@ -66,6 +68,23 @@ Here it is on real ETH data. Fitted on 900 hours, the grid made +4.98%. On the n
 </details>
 
 I backtest every candidate, not only the ones that look good, on 29 crypto pairs with OKX hourly data ([`docs/backtest_results.md`](docs/backtest_results.md)). Each result shows how much data it's based on, because some pairs have eight years of history and others only a few months.
+
+## The result: no edge, so I retired it
+
+The plain grid lost money on unseen data: **−1.41%** on average across the 29 pairs, positive on only 8 of them. So I gave myself three more ideas to try, and wrote the rule for judging them in [`docs/THEORY.md`](docs/THEORY.md) **before** running anything, so I couldn't move the goalposts afterwards.
+
+| version | average return | pairs positive |
+|---|---:|---:|
+| Plain grid | −1.41% | 8/29 |
+| A. One order, then re-check the market | −0.19% | 9/29 |
+| B. Exit when a trend starts | −0.19% | 9/29 |
+| C. Bigger orders near the top of the grid | **+1.82%** | 15/29 |
+
+A and B only look better because they hardly trade. C looked like a winner, but when I split its profit apart, it **earned less from actual trades** than the plain grid (+17.29 vs +25.14 per 1,000 invested). Its whole advantage came from ending up holding less coin. Its confidence interval also crossed zero, and removing its two best pairs left almost nothing.
+
+The rule asked for one more test on a second, separate time window. C again made less from trading than the plain grid, in both windows. That meant the rule's answer was "retire", so I stopped. Holding less coin is a choice you can make directly. It doesn't need a grid.
+
+The full numbers, including a mistake I made in describing one of the windows, are in [`docs/backtest_results.md`](docs/backtest_results.md).
 
 ## The app
 
@@ -100,7 +119,7 @@ docs/             design notes (DESIGN.md), the maths behind sizing (THEORY.md),
 
 ## How I built it
 
-I designed the strategy, the risk rules and the testing approach, and built it with Claude Code as my pair programmer, one module at a time with tests for each. The detailed design notes, including the variants I tried and retired, are in [`docs/DESIGN.md`](docs/DESIGN.md).
+I designed the strategy, the risk rules and the testing approach, and built it with Claude Code as my pair programmer, one module at a time with tests for each. The detailed design notes, including the variants I tried and the retirement, are in [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## Built with
 
