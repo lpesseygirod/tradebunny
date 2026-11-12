@@ -16,6 +16,13 @@ setting: conservative          # conservative | growth
 benchmark: IWDA.AS             # MSCI World in euros: the bar to beat
 fee_per_order_eur: 1.0         # Trade Republic flat fee
 
+# Where approved orders go. "paper" fills at the last real price. "ibkr" sends
+# limit orders to Interactive Brokers through IB Gateway on this Mac: start with
+# an IBKR paper account (port 4002). Real money also needs live: true and the
+# confirmation phrase. Nothing is ever ordered without your approval.
+broker:
+  kind: paper
+
 limits:
   min_position: 0.03           # no position below 3%
   max_position: 0.05           # 6 Oct review: no single share above ~5%
@@ -35,6 +42,9 @@ limits:
   max_loss: 0.20               # if hit: move 10 points from stocks to euro bonds
   meeting_budget_usd: 3.0      # stop a meeting that costs more than this
   watchlist_deadline: "2027-03-31"   # unused reserve moves to the index ETFs
+  proposal_days: 7             # a proposal you have not answered expires
+  max_holding_reviews_per_month: 4
+  review_holdings_every_days: 90     # each holding is re-examined about quarterly
 
 # The model portfolio. Weights are the 2 Oct Full Review's two settings.
 # bucket: index | bonds | gold | stock. Reserve and cash are not instruments.

@@ -17,6 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from . import risk
+from .broker import Broker, BrokerError, make_broker
 from .data import DataError, Steward
 from .mandate import Mandate
 from .store import Store
@@ -49,8 +50,10 @@ class Position:
 
 
 class Portfolio:
-    def __init__(self, store: Store, steward: Steward, mandate: Mandate):
+    def __init__(self, store: Store, steward: Steward, mandate: Mandate,
+                 broker: Optional[Broker] = None):
         self.store, self.steward, self.m = store, steward, mandate
+        self.broker = broker or make_broker(mandate)
 
     # ------------------------------------------------------------- state
 
@@ -128,13 +131,13 @@ class Portfolio:
         if amount_eur < DUST_EUR:
             return None
         q = self.steward.quote(ticker)
-        fee = self.m.fee_per_order_eur
-        if amount_eur + fee > self.cash() + 1e-6:
+        if amount_eur + self.m.fee_per_order_eur > self.cash() + 1e-6:
             raise DataError(f"not enough cash for {amount_eur:,.2f} EUR of {ticker}")
-        qty = round(amount_eur / q.price_eur, 6)
-        trade = dict(ticker=ticker, side="buy", qty=qty, price=q.price, currency=q.currency,
-                     price_eur=q.price_eur, fee_eur=fee, amount_eur=qty * q.price_eur,
-                     meeting_id=meeting_id, note=note or "limit order at the last price")
+        f = self.broker.execute(ticker, "buy", round(amount_eur / q.price_eur, 6), q)
+        trade = dict(ticker=ticker, side="buy", qty=f.qty, price=f.price, currency=f.currency,
+                     price_eur=f.price_eur, fee_eur=f.fee_eur, amount_eur=f.qty * f.price_eur,
+                     meeting_id=meeting_id, note=note or "limit order at the last price",
+                     broker=f.broker)
         trade["id"] = self.store.add_trade(**trade)
         return trade
 
@@ -147,10 +150,11 @@ class Portfolio:
         qty = held if amount_eur is None else min(held, round(amount_eur / q.price_eur, 6))
         if qty * q.price_eur < DUST_EUR:
             return None
-        trade = dict(ticker=ticker, side="sell", qty=qty, price=q.price, currency=q.currency,
-                     price_eur=q.price_eur, fee_eur=self.m.fee_per_order_eur,
-                     amount_eur=qty * q.price_eur, meeting_id=meeting_id,
-                     note=note or "limit order at the last price")
+        f = self.broker.execute(ticker, "sell", qty, q)
+        trade = dict(ticker=ticker, side="sell", qty=f.qty, price=f.price, currency=f.currency,
+                     price_eur=f.price_eur, fee_eur=f.fee_eur, amount_eur=f.qty * f.price_eur,
+                     meeting_id=meeting_id, note=note or "limit order at the last price",
+                     broker=f.broker)
         trade["id"] = self.store.add_trade(**trade)
         return trade
 
@@ -199,7 +203,7 @@ class Portfolio:
         return {"value_eur": value, "benchmark_eur": bench}
 
     def review(self, on: Optional[str] = None) -> list[str]:
-        """The daily housekeeping: due tranches, triggers, the deadline, a snapshot."""
+        """Housekeeping: tranches you already approved, triggers, today's value."""
         on = on or today()
         events: list[str] = []
         for tr in self.store.tranches("planned"):
@@ -211,11 +215,8 @@ class Portfolio:
                 if t:
                     events.append(f"Bought {tr['note']} of {self.m.name_of(tr['ticker'])}: "
                                   f"{t['amount_eur']:,.2f} EUR")
-            except DataError as e:
+            except (DataError, BrokerError) as e:
                 events.append(f"Skipped a tranche of {tr['ticker']}: {e}")
-
-        if on >= self.m.limits.watchlist_deadline and not self.store.get_meta("deadline_done"):
-            events += self._deadline()
 
         quotes = self.steward.quotes(self.tickers_needed())
         for w in self.watch_status(quotes):
@@ -227,19 +228,10 @@ class Portfolio:
                       f"{snap['benchmark_eur']:,.2f} EUR")
         return events
 
-    def _deadline(self) -> list[str]:
-        """Unused watch-list reserve goes into the index ETFs."""
+    def spare_reserve(self) -> float:
+        """Reserve not promised to any tranche, above the cash target."""
         book = self.book()
-        spare = book.free_cash() - self.m.limits.cash_target.get(self.m.setting) * book.total
-        index = [i for i in self.m.instruments if i.bucket == "index"]
-        self.store.set_meta("deadline_done", today())
-        if spare < DUST_EUR or not index:
-            return ["Watch-list deadline: no unused reserve left"]
-        total_w = sum(i.weights.get(self.m.setting) for i in index) or 1.0
-        for i in index:
-            self.buy(i.ticker, spare * i.weights.get(self.m.setting) / total_w,
-                     note="watch-list deadline: reserve moved to the index")
-        return [f"Watch-list deadline: {spare:,.2f} EUR of unused reserve moved to the index ETFs"]
+        return book.free_cash() - self.m.limits.cash_target.get(self.m.setting) * book.total
 
     def watch_status(self, quotes: dict) -> list[dict]:
         out = []

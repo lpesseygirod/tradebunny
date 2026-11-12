@@ -22,7 +22,7 @@ from typing import Callable, Optional
 from flask import (Flask, abort, flash, jsonify, redirect, render_template,
                    request, session, url_for)
 
-from . import agents, mandate as mandate_mod, paths, risk, views
+from . import agents, approvals, mandate as mandate_mod, paths, risk, scan, views
 from .data import DataError, Steward
 from .meeting import Meeting
 from .portfolio import Portfolio
@@ -35,6 +35,8 @@ ROLE_STYLE = {
     "redteam": ("Red team", "RT", "red"),
     "risk": ("Risk officer", "RO", "violet"),
     "cio": ("Chair / CIO", "CIO", "ink"),
+    "checker": ("Fact-checker", "FC", "slate"),
+    "you": ("You", "YOU", "ink"),
     "code": ("Rules (code)", "</>", "slate"),
 }
 
@@ -145,6 +147,7 @@ def create_app(store: Optional[Store] = None, steward: Optional[Steward] = None,
                mandate: Optional[mandate_mod.Mandate] = None,
                backend_factory: Callable[[], agents.Backend] = default_backend,
                token: Optional[str] = None, run_async: bool = True) -> Flask:
+    paths.load_env()
     app = Flask(__name__)
     app.secret_key = os.getenv("COUNCIL_SECRET") or os.urandom(24)
     token = token if token is not None else os.getenv("COUNCIL_WEB_TOKEN", "")
@@ -187,7 +190,11 @@ def create_app(store: Optional[Store] = None, steward: Optional[Steward] = None,
         except DataError as e:
             return render_template("error.html", error=str(e)), 503
         names = [(t, m.name_of(t)) for t in m.universe()]
-        return render_template("dashboard.html", v=views.money(store, pf, m, q), names=names)
+        approvals.expire(store)
+        return render_template("dashboard.html", v=views.money(store, pf, m, q), names=names,
+                               agenda=scan.agenda(store, pf, m, q),
+                               last_scan=store.get_meta("last_scan"),
+                               scanning=bool(store.get_meta("scanning")))
 
     @app.get("/meetings")
     def meetings():
@@ -252,7 +259,55 @@ def create_app(store: Optional[Store] = None, steward: Optional[Steward] = None,
                                close=sum(1 for r in rows if r["status"] == "close"),
                                over=sum(1 for r in rows if r["status"] == "over"))
 
+    @app.get("/how")
+    def how():
+        return render_template("how.html", lim=m.limits)
+
     # ------------------------------------------------------------ actions
+
+    @app.post("/proposals/<int:pid>/approve")
+    def approve(pid: int):
+        try:
+            r = approvals.approve(store, pf, m, pid)
+            n = len(r["trades"])
+            flash(f"Approved. {n} order{'s' if n != 1 else ''} placed"
+                  + (f"; {len(r['planned'])} more tranches scheduled." if r["planned"] else "."))
+        except approvals.ApprovalError as e:
+            flash(f"Not placed: {e}")
+        return redirect(request.form.get("next") or url_for("dashboard"))
+
+    @app.post("/proposals/<int:pid>/reject")
+    def reject(pid: int):
+        try:
+            approvals.reject(store, pid)
+            flash("Rejected. Nothing was traded.")
+        except approvals.ApprovalError as e:
+            flash(str(e))
+        return redirect(request.form.get("next") or url_for("dashboard"))
+
+    @app.post("/scan")
+    def run_scan():
+        if store.get_meta("scanning"):
+            flash("The council is already meeting.")
+            return redirect(url_for("meetings"))
+        plan = scan.agenda(store, pf, m, quotes())
+        if not plan["picked"]:
+            flash("Nothing on the agenda today: no trigger is hit or close, and no holding is due for review.")
+            return redirect(url_for("dashboard"))
+
+        def work():
+            store.set_meta("scanning", True)
+            try:
+                scan.run(Store(store.path), steward, m, pf, backend_factory())
+            finally:
+                store.set_meta("scanning", False)
+        if run_async:
+            threading.Thread(target=work, daemon=True).start()
+        else:
+            work()
+        flash("The council is meeting on " + ", ".join(c["name"] for c in plan["picked"])
+              + ". Proposals will wait for your OK.")
+        return redirect(url_for("meetings"))
 
     @app.post("/start")
     def start():

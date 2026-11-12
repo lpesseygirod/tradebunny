@@ -1,7 +1,25 @@
 {% extends "base.html" %}
 {% block title %}Money · TradeBunny{% endblock %}
 {% block content %}
-<div class="grid g-hero">
+{% if v.proposals %}
+<section class="card inbox">
+  <div class="card-head"><div><div class="eyebrow" style="color:var(--accent)">Waiting for your OK</div>
+    <h2 style="font-size:1.45rem;margin-top:6px">The council proposes {{ v.proposals|length }} trade{{ 's' if v.proposals|length != 1 }}</h2></div>
+    <span class="small muted">Nothing is traded until you approve. Approving re-checks every rule at today's price.</span></div>
+  <ul class="rows">
+    {% for p in v.proposals %}
+    <li>
+      <span class="grade {{ p.grade }}">{{ p.grade if p.grade in ('A','B','C','D') else '–' }}</span>
+      <div class="grow"><b>{{ p.summary }}</b>
+        <div class="small muted">{% if p.label %}{{ p.label }} · {% endif %}{% if p.meeting_id %}<a href="{{ url_for('meeting_page', mid=p.meeting_id) }}" class="link" style="font-size:.85rem">read the debate (#{{ p.meeting_id }})</a> · {% endif %}{{ p.expires }}</div></div>
+      <form method="post" action="{{ url_for('reject', pid=p.id) }}"><button class="btn light sm">Reject</button></form>
+      <form method="post" action="{{ url_for('approve', pid=p.id) }}"><button class="btn accent sm">Approve</button></form>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+<div class="grid g-hero {{ 'mt' if v.proposals }}">
   <section class="card">
     <div class="hero-top">
       <div>
@@ -51,7 +69,22 @@
       <li><i class="green"></i><span>Gate checks the name is allowed before anyone writes</span></li>
       <li><i></i><span>AI cost capped at ${{ '%g'|format(mandate.limits.meeting_budget_usd) }} a meeting{% if backend_name != 'claude' %}; scripted members cost nothing{% endif %}</span></li>
     </ul>
-    <form method="post" action="{{ url_for('review') }}" style="margin-top:18px">
+    <div class="agenda">
+      <div class="eyebrow">Or let the council choose</div>
+      {% if scanning %}<p class="small"><span class="pulse-dot"></span> The council is meeting now…</p>
+      {% elif agenda.picked %}
+        <ul class="notes" style="margin-top:8px">
+          {% for c in agenda.picked %}<li><i class="{{ 'green' if c.kind == 'idea' else '' }}"></i><span><b style="color:var(--ink)">{{ c.name }}</b> · {{ c.reason }}</span></li>{% endfor %}
+        </ul>
+        <form method="post" action="{{ url_for('run_scan') }}" style="margin-top:12px">
+          <button class="btn dark" style="width:100%">Let the council meet on {{ agenda.picked|length }} name{{ 's' if agenda.picked|length != 1 }}</button></form>
+      {% else %}
+        <p class="small muted">Nothing on today's agenda: no buy trigger is hit or close, and no holding is due for review.</p>
+      {% endif %}
+      {% if agenda.skipped %}<details class="tiny muted" style="margin-top:8px"><summary>{{ agenda.skipped|length }} left off, and why</summary>
+        {% for s in agenda.skipped %}<div>{{ s.name }}: {{ s.why }}</div>{% endfor %}</details>{% endif %}
+    </div>
+    <form method="post" action="{{ url_for('review') }}" style="margin-top:14px">
       <button class="btn light" style="width:100%">Run today's review</button></form>
   </section>
 </div>

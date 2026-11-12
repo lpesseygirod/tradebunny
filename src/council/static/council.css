@@ -236,3 +236,26 @@ footer.foot { color: var(--muted); font-size: .8rem; }
 footer.foot .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-bottom: 40px; }
 
 td.num, td.r { white-space: nowrap; }
+
+/* ---------------- approvals and agenda ---------------- */
+.inbox { border: 2px solid var(--accent); }
+.inbox .rows > li { flex-wrap: wrap; }
+.btn.sm { padding: 9px 16px; width: auto; }
+.btn.dark { background: var(--ink); color: var(--bg); }
+.agenda { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 16px; }
+.pulse-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); animation: pulse 1s infinite alternate; margin-right: 6px; }
+.approve-box { background: #f4f3ef; color: var(--ink); border-radius: 16px; padding: 16px 18px; margin-top: 14px; }
+.approve-box .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.approve-box p { color: var(--ink); }
+.claims { list-style: none; padding: 0; margin: 8px 0 0; }
+.claims li { display: flex; gap: 12px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: .92rem; }
+.claims li:last-child { border-bottom: 0; }
+.pill.confirmed { background: var(--good-bg); color: var(--good); }
+.pill.unsupported { background: var(--warn-bg); color: var(--warn); }
+.pill.contradicted { background: var(--bad-bg); color: var(--bad); }
+.how-steps { counter-reset: s; list-style: none; padding: 0; margin: 0; }
+.how-steps > li { counter-increment: s; display: grid; grid-template-columns: 44px 1fr; gap: 14px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.how-steps > li:last-child { border-bottom: 0; }
+.how-steps > li::before { content: counter(s); width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--bg); font-weight: 800; }
+.how-steps .who { margin: 4px 0; }
+.src { font-size: .78rem; color: var(--faint); margin-top: 4px; }

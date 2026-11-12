@@ -54,7 +54,8 @@ CREATE TABLE IF NOT EXISTS trades (
     fee_eur REAL NOT NULL,
     amount_eur REAL NOT NULL,        -- excluding the fee
     meeting_id INTEGER,
-    note TEXT DEFAULT ''
+    note TEXT DEFAULT '',
+    broker TEXT DEFAULT 'paper'
 );
 CREATE TABLE IF NOT EXISTS tranches (
     id INTEGER PRIMARY KEY,
@@ -69,6 +70,21 @@ CREATE TABLE IF NOT EXISTS snapshots (
     day TEXT PRIMARY KEY,            -- one per day
     value_eur REAL NOT NULL,
     benchmark_eur REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS proposals (
+    id INTEGER PRIMARY KEY,
+    meeting_id INTEGER,
+    ticker TEXT NOT NULL,
+    action TEXT NOT NULL,            -- buy | sell | trim | deadline
+    conviction TEXT DEFAULT 'none',
+    amount_eur REAL NOT NULL,
+    summary TEXT NOT NULL,
+    data TEXT,                       -- JSON: the sizing the risk engine proposed
+    status TEXT NOT NULL DEFAULT 'pending',   -- pending | approved | rejected | expired | failed
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    decided_at TEXT,
+    result TEXT                      -- JSON: what happened when it was answered
 );
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
@@ -222,6 +238,50 @@ class Store:
         with self._conn() as c:
             return c.execute("UPDATE tranches SET status='cancelled' WHERE ticker=? "
                              "AND status='planned'", (ticker,)).rowcount
+
+    # ----------------------------------------------------------- proposals
+
+    def add_proposal(self, *, meeting_id, ticker, action, conviction, amount_eur,
+                     summary, data, expires_at) -> int:
+        with self._conn() as c:
+            cur = c.execute(
+                "INSERT INTO proposals(meeting_id,ticker,action,conviction,amount_eur,summary,"
+                "data,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                (meeting_id, ticker, action, conviction, amount_eur, summary,
+                 json.dumps(data), now(), expires_at))
+            return int(cur.lastrowid)
+
+    @staticmethod
+    def _proposal(r: sqlite3.Row) -> dict:
+        d = dict(r)
+        d["data"] = json.loads(d["data"]) if d["data"] else {}
+        d["result"] = json.loads(d["result"]) if d["result"] else None
+        return d
+
+    def proposal(self, pid: int) -> Optional[dict]:
+        with self._conn() as c:
+            r = c.execute("SELECT * FROM proposals WHERE id=?", (pid,)).fetchone()
+        return self._proposal(r) if r else None
+
+    def proposals(self, status: Optional[str] = None, meeting_id: Optional[int] = None) -> list[dict]:
+        sql, args, where = "SELECT * FROM proposals", [], []
+        if status:
+            where.append("status=?"); args.append(status)
+        if meeting_id is not None:
+            where.append("meeting_id=?"); args.append(meeting_id)
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        with self._conn() as c:
+            return [self._proposal(r) for r in c.execute(sql + " ORDER BY id DESC", args).fetchall()]
+
+    def decide_proposal(self, pid: int, status: str, result=None) -> bool:
+        """Answer a pending proposal once. False if it was not pending."""
+        with self._conn() as c:
+            n = c.execute("UPDATE proposals SET status=?, decided_at=?, result=? "
+                          "WHERE id=? AND status='pending'",
+                          (status, now(), json.dumps(result) if result is not None else None,
+                           pid)).rowcount
+        return n == 1
 
     # ----------------------------------------------------------- snapshots
 

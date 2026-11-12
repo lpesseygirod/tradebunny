@@ -47,11 +47,30 @@ class Limits(Strict):
     max_loss: float = Field(gt=0, lt=1)
     meeting_budget_usd: float = Field(gt=0)
     watchlist_deadline: str
+    proposal_days: int = Field(default=7, ge=1)          # an unanswered proposal expires
+    max_holding_reviews_per_month: int = Field(default=4, ge=0)
+    review_holdings_every_days: int = Field(default=90, ge=7)
 
     @model_validator(mode="after")
     def _order(self) -> "Limits":
         if self.min_position > self.max_position:
             raise ValueError("min_position is above max_position")
+        return self
+
+
+class BrokerConfig(Strict):
+    """Where approved orders go. Paper unless deliberately changed."""
+    kind: Literal["paper", "ibkr"] = "paper"
+    host: str = "127.0.0.1"
+    port: int = 4002                 # IB Gateway paper; 4001 is the live gateway
+    client_id: int = 17
+    live: bool = False               # True only with the confirmation below
+    confirm: str = ""                # must read "I ACCEPT THE RISK" for live money
+
+    @model_validator(mode="after")
+    def _live(self) -> "BrokerConfig":
+        if self.live and self.confirm != "I ACCEPT THE RISK":
+            raise ValueError("broker.live needs confirm: 'I ACCEPT THE RISK'")
         return self
 
 
@@ -68,6 +87,7 @@ class Instrument(Strict):
     trigger: str = ""
     entry_price_eur: Optional[float] = None
     breakers: list[str] = []
+    ibkr: Optional[str] = None       # "SYMBOL:EXCHANGE:CURRENCY" if the default guess is wrong
 
 
 class WatchItem(Strict):
@@ -81,6 +101,7 @@ class WatchItem(Strict):
     event: str = ""
     ai: bool = False
     taiwan: bool = False
+    ibkr: Optional[str] = None
 
 
 class Rejected(Strict):
@@ -96,6 +117,7 @@ class Mandate(Strict):
     setting: Setting
     benchmark: str
     fee_per_order_eur: float = Field(ge=0)
+    broker: BrokerConfig = BrokerConfig()
     limits: Limits
     instruments: list[Instrument]
     watchlist: list[WatchItem] = []

@@ -125,6 +125,18 @@ class RiskMemo(BaseModel):
     memo: str = Field(description="Markdown, under 200 words. You may only ask for stricter action.")
 
 
+class Claim(BaseModel):
+    claim: str = Field(description="The claim, quoted or closely paraphrased, with who made it")
+    status: Literal["confirmed", "unsupported", "contradicted"]
+    note: str = Field(description="What the fact sheet or the research notes say about it")
+
+
+class FactCheck(BaseModel):
+    claims: list[Claim] = Field(min_length=1, max_length=10,
+                                description="The claims the decision will rest on, most important first")
+    summary: str = Field(description="One or two sentences: can the committee rely on these memos?")
+
+
 class Answer(BaseModel):
     rank: int
     answer: str
@@ -178,18 +190,26 @@ ROLES: dict[str, Role] = {r.key: r for r in [
          "self-funded) with evidence from this round only. A point you cannot "
          "reconfirm is 'unclear'. Write falsifiable thesis breakers. Never set a "
          "price or a position size. " + GUARD),
-    Role("valuation", "Valuation analyst", "VA", OPUS, False,
+    Role("valuation", "Valuation analyst", "VA", OPUS, True,
          "You are the valuation analyst. Your question: is it already priced in? "
-         "Compare the forward P/E with the company's own history and its peers, "
-         "and say how it does if rates stay high (high multiples lose then). You "
-         "may cite ONLY numbers in the fact sheet you are given; anything else is "
-         "your judgment and must be labelled as such. " + GUARD),
+         "Compare the forward P/E with the company's own 5-year average and its "
+         "peers, and say how it does if rates stay high (high multiples lose then). "
+         "Cite the fact sheet for the current price and multiple, and cite your "
+         "research notes, with source and date, for history and peers. A number "
+         "with no source is your judgment and must be labelled as such. " + GUARD),
     Role("redteam", "Red team", "RT", RED_TEAM_MODEL, True,
          "You are the red team, the formal dissenter. You argue honestly against "
          "the idea with specific, falsifiable risks backed by evidence (short-"
          "seller reports, bearish coverage, competitors, Chinese price pressure, "
          "substitution technologies, valuation). Generic objections such as "
          "'markets are uncertain' are not allowed. " + GUARD),
+    Role("checker", "Fact-checker", "FC", RED_TEAM_MODEL, False,
+         "You are the council's fact-checker. You do not argue for or against the "
+         "stock. Take the claims the decision will rest on, from every memo, and "
+         "check each one against the fact sheet and the members' research notes: "
+         "confirmed (a dated source or the fact sheet says so), unsupported (nobody "
+         "showed a source), or contradicted (a source says otherwise). Numbers are "
+         "the priority. " + GUARD),
     Role("risk", "Risk officer", "RO", OPUS, False,
          "You are the risk officer. Hard limits are enforced by code, not by you; "
          "you explain exposure in words: which holdings are the same bet, what each "
@@ -204,8 +224,13 @@ ROLES: dict[str, Role] = {r.key: r for r in [
          "small); C = cheap but an unresolved business problem (watch); D = fails "
          "the business test (avoid). Answer each ranked objection explicitly. A "
          "strong business with a strong price critique goes to the watch list. "
-         "Sell or trim only when a named thesis breaker has fired, never on price "
-         "alone. Conviction 'core' or 'starter' only for buy or add. " + GUARD),
+         "Rely only on claims the fact-checker confirmed or the fact sheet shows; "
+         "unsupported claims count for nothing. Buy or add only grade A, or grade "
+         "B once its trigger has been reached, and say which trigger in "
+         "buy_trigger. Conviction 'core' (a full position) only for grade A; "
+         "'starter' (the minimum) for B. Sell or trim only when a named thesis "
+         "breaker has fired, never on price alone. Code checks every one of these "
+         "rules after you decide and blocks a verdict that breaks them. " + GUARD),
 ]}
 
 
@@ -412,6 +437,17 @@ class ScriptedBackend:
                                 response="Conceded: price is the open issue." if o["rank"] == 1
                                 else "Not fired yet; it stays a sell condition.") for o in objs],
             memo="Scripted rebuttal: the business case stands, the price objection is conceded.")
+
+    def _factcheck(self, c: dict) -> FactCheck:
+        v = c.get("valuation") or {}
+        pe, cited = c["quote"].get("forward_pe"), v.get("forward_pe_cited")
+        same = pe is not None and cited is not None and abs(pe - cited) < 0.05
+        return FactCheck(
+            claims=[Claim(claim=f"Valuation analyst: forward P/E {cited:.1f}" if cited else
+                          "Valuation analyst: no forward P/E cited",
+                          status="confirmed" if same else "unsupported",
+                          note=f"Fact sheet: {pe:.1f}" if pe else "No P/E on the fact sheet")],
+            summary="Scripted check: only the cited P/E was compared with the fact sheet.")
 
     def _risk(self, c: dict) -> RiskMemo:
         ai, pe = c["ai"], c["quote"].get("forward_pe") or 20

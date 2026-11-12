@@ -138,10 +138,16 @@ class TestPortfolio:
         assert len(st.trades()) == before * 3
         assert st.tranches("planned") == []
 
-    def test_the_watch_list_deadline_moves_the_reserve_to_the_index(self, pf, st, m):
-        pf.review(on="2099-01-01")
-        notes = [t["note"] for t in st.trades()]
-        assert any("deadline" in n for n in notes)
+    def test_the_watch_list_deadline_is_a_proposal_not_a_trade(self, pf, st, steward, m, monkeypatch):
+        from council import approvals, scan
+        pf.review(on="2027-03-01")                       # all tranches bought
+        monkeypatch.setattr(scan, "now", lambda: "2099-01-01T00:00:00+00:00")
+        before = len(st.trades())
+        scan.daily(st, steward, m, pf)
+        p = next(x for x in st.proposals("pending") if x["action"] == "deadline")
+        assert len(st.trades()) == before                # nothing moved yet
+        approvals.approve(st, pf, m, p["id"])
+        assert any("deadline" in t["note"] for t in st.trades())
         assert st.get_meta("deadline_done")
 
     def test_the_benchmark_starts_at_the_capital(self, pf, m):
@@ -171,12 +177,18 @@ class TestMeeting:
         mt, steps = run(st, steward, m, pf, "SHA0.DE")
         assert mt["status"] == "stopped" and len(steps) == 1
 
-    def test_an_approved_add_trades_through_the_risk_engine(self, st, steward, m, pf):
+    def test_a_verdict_waits_for_your_ok(self, st, steward, m, pf):
+        from council import approvals
         before = len(st.trades())
         mt, steps = run(st, steward, m, pf, "TSM")
         assert mt["decision"]["decision"] == "add"
-        assert len(st.trades()) == before + 1          # first tranche only
-        assert any(s["phase"] == "trade" for s in steps)
+        assert len(st.trades()) == before                # nothing traded yet
+        pid = mt["outcome"]["proposal"]
+        assert st.proposal(pid)["status"] == "pending"
+        approvals.approve(st, pf, m, pid)
+        assert len(st.trades()) == before + 1            # first tranche only
+        assert st.proposal(pid)["status"] == "approved"
+        assert any(s["title"] == "You approved" for s in st.steps(mt["id"]))
 
     def test_the_red_team_runs_on_another_model(self):
         assert agents.ROLES["redteam"].model != agents.ROLES["thesis"].model
@@ -254,7 +266,7 @@ class TestClaudeBackend:
     def test_roles_without_web_access_do_not_search(self):
         fc = FakeClient()
         with pytest.raises(agents.RoleRefused):          # parse returns None for this schema
-            agents.ClaudeBackend(client=fc).run(agents.ROLES["valuation"], "f", agents.ValuationMemo, {})
+            agents.ClaudeBackend(client=fc).run(agents.ROLES["risk"], "f", agents.RiskMemo, {})
         assert [c[0] for c in fc.calls] == ["parse"]
 
     def test_a_refusal_raises(self):
@@ -294,7 +306,8 @@ class TestWeb:
         r = client.post("/meetings", data={"ticker": "tsm"})       # case-insensitive
         page = client.get(r.headers["Location"]).data
         for text in (b"Blind memos", b"Cross-examination", b"The verdict", b"Risk engine",
-                     b"Orders placed", b"overlap and scenarios", b"Five-point chokepoint test"):
+                     b"Proposed orders", b"Waiting for your OK", b"Fact-checker",
+                     b"overlap and scenarios", b"Five-point chokepoint test"):
             assert text in page, text
 
     def test_the_live_endpoint_returns_the_debate(self, client):
@@ -306,7 +319,7 @@ class TestWeb:
     def test_every_page_renders(self, client):
         client.post("/start")
         client.post("/meetings", data={"ticker": "SHA0.DE"})
-        for path in ("/", "/meetings", "/meetings/1", "/portfolio", "/rules"):
+        for path in ("/", "/meetings", "/meetings/1", "/portfolio", "/rules", "/how"):
             assert client.get(path).status_code == 200, path
 
     def test_actions_need_the_token_when_one_is_set(self, st, steward, m):
@@ -358,3 +371,201 @@ class TestViews:
         client.post("/meetings", data={"ticker": "HWM"})
         page = client.get("/meetings?f=watch").data
         assert b"Howmet" in page and b"TSMC" not in page.split(b"<table>")[1]
+
+
+# ---------------------------------------------------------------- approvals
+
+class TestApprovals:
+    def proposal(self, st, steward, m, pf, ticker="TSM"):
+        mt, _ = run(st, steward, m, pf, ticker)
+        return mt["outcome"]["proposal"]
+
+    def test_reject_trades_nothing(self, st, steward, m, pf):
+        from council import approvals
+        pid = self.proposal(st, steward, m, pf)
+        before = len(st.trades())
+        approvals.reject(st, pid)
+        assert len(st.trades()) == before and st.proposal(pid)["status"] == "rejected"
+
+    def test_a_proposal_is_answered_once(self, st, steward, m, pf):
+        from council import approvals
+        pid = self.proposal(st, steward, m, pf)
+        approvals.approve(st, pf, m, pid)
+        with pytest.raises(approvals.ApprovalError):
+            approvals.approve(st, pf, m, pid)
+
+    def test_an_expired_proposal_cannot_be_approved(self, st, steward, m, pf, monkeypatch):
+        from council import approvals
+        pid = self.proposal(st, steward, m, pf)
+        monkeypatch.setattr(approvals, "now", lambda: "2999-01-01T00:00:00+00:00")
+        with pytest.raises(approvals.ApprovalError):
+            approvals.approve(st, pf, m, pid)
+        assert st.proposal(pid)["status"] == "expired"
+
+    def test_approval_rechecks_the_rules_at_todays_book(self, st, steward, m, pf):
+        from council import approvals
+        pid = self.proposal(st, steward, m, pf)           # TSMC add, allowed now
+        st.plan_tranche("TSM", "2099-01-01", 2000.0)      # now TSMC is far over its cap
+        with pytest.raises(approvals.ApprovalError):
+            approvals.approve(st, pf, m, pid)
+        assert st.proposal(pid)["status"] == "failed"
+
+
+# ------------------------------------------------------ the CIO's own rules
+
+class TestPolicy:
+    def q(self, steward, t):
+        return steward.quote(t)
+
+    def test_a_grade_c_cannot_be_bought(self, m, steward):
+        checks, _ = risk.policy("IFX.DE", {"grade": "C", "conviction": "starter"}, m, self.q(steward, "IFX.DE"))
+        assert not checks[0].ok
+
+    def test_a_b_name_waits_for_its_trigger(self, m, steward):
+        q = self.q(steward, "HWM")                        # trigger fwd P/E 30
+        checks, _ = risk.policy("HWM", {"grade": "B", "conviction": "starter"}, m, q)
+        trig = next(c for c in checks if c.name == "Trigger reached")
+        assert trig.ok == (q.forward_pe <= 30)
+
+    def test_core_needs_grade_a(self, m, steward):
+        _, conv = risk.policy("CME", {"grade": "B", "conviction": "core"}, m, self.q(steward, "CME"))
+        assert conv == "starter"
+
+
+# --------------------------------------------------------------------- scan
+
+class TestScan:
+    def test_hit_triggers_come_first(self, st, steward, m, pf):
+        from council import scan
+        plan = scan.agenda(st, pf, m, steward.quotes(pf.tickers_needed()))
+        ranks = [c["rank"] for c in plan["picked"]]
+        assert ranks == sorted(ranks)
+        assert all(c["kind"] in ("idea", "holding") for c in plan["picked"])
+
+    def test_the_monthly_caps_hold(self, st, steward, m, pf):
+        from council import scan
+        plan = scan.agenda(st, pf, m, steward.quotes(pf.tickers_needed()))
+        ideas = [c for c in plan["picked"] if c["kind"] == "idea"]
+        holds = [c for c in plan["picked"] if c["kind"] == "holding"]
+        assert len(ideas) <= m.limits.max_meetings_per_month
+        assert len(holds) <= m.limits.max_holding_reviews_per_month
+
+    def test_a_name_just_discussed_is_skipped(self, st, steward, m, pf):
+        from council import scan
+        first = scan.agenda(st, pf, m, steward.quotes(pf.tickers_needed()))["picked"][0]
+        run(st, steward, m, pf, first["ticker"])
+        again = scan.agenda(st, pf, m, steward.quotes(pf.tickers_needed()))
+        assert first["ticker"] not in [c["ticker"] for c in again["picked"]]
+
+    def test_daily_runs_meetings_but_trades_nothing_new(self, st, steward, m, pf):
+        from council import scan
+        before = len(st.trades())
+        scan.daily(st, steward, m, pf, agents.ScriptedBackend())
+        assert len(st.trades()) == before                 # tranches not due yet, rest waits for you
+
+
+# ------------------------------------------------------------------- broker
+
+class FakeIB:
+    """Stands in for ib_async: records the order and fills it."""
+    def __init__(self, fill=True):
+        self.orders, self.fill = [], fill
+        outer = self
+
+        class Trade:
+            def __init__(self, order):
+                self.order = order
+                self.orderStatus = SimpleNamespace(filled=order.totalQuantity if outer.fill else 0,
+                                                   avgFillPrice=order.lmtPrice)
+                self.fills = [SimpleNamespace(commissionReport=SimpleNamespace(commission=1.25))] if outer.fill else []
+            def isDone(self):
+                return outer.fill
+        self.Trade = Trade
+        self.cancelled = []
+
+    # ib_async module surface
+    def Stock(self, sym, exch, ccy):
+        return SimpleNamespace(symbol=sym, exchange=exch, currency=ccy)
+    def LimitOrder(self, action, qty, price, tif="DAY"):
+        return SimpleNamespace(action=action, totalQuantity=qty, lmtPrice=price, orderId=7)
+    # IB client surface
+    def placeOrder(self, contract, order):
+        self.orders.append((contract, order))
+        return self.Trade(order)
+    def sleep(self, s):
+        pass
+    def cancelOrder(self, order):
+        self.cancelled.append(order)
+
+
+class TestBroker:
+    def test_paper_is_the_default(self, m):
+        from council.broker import PaperBroker, make_broker
+        assert isinstance(make_broker(m), PaperBroker)
+
+    def test_live_money_needs_the_phrase(self):
+        r = raw()
+        r["broker"] = {"kind": "ibkr", "live": True}
+        with pytest.raises(Exception):
+            mandate.Mandate.model_validate(r)
+
+    def test_ibkr_sends_a_limit_order_at_the_last_price(self, m, steward):
+        from council.broker import IBKRBroker
+        fake = FakeIB()
+        b = IBKRBroker(m.broker, m, ib=fake, lib=fake)
+        q = steward.quote("ASML.AS")
+        f = b.execute("ASML.AS", "buy", 0.5, q)
+        contract, order = fake.orders[0]
+        assert (contract.symbol, contract.exchange, contract.currency) == ("ASML", "AEB", "EUR")
+        assert order.action == "BUY" and order.lmtPrice == round(q.price, 4)
+        assert f.qty == 0.5 and f.broker == "ibkr"
+
+    def test_an_unfilled_order_is_cancelled_and_raises(self, m, steward):
+        from council.broker import BrokerError, IBKRBroker
+        fake = FakeIB(fill=False)
+        b = IBKRBroker(m.broker, m, ib=fake, lib=fake, wait_seconds=2)
+        with pytest.raises(BrokerError):
+            b.execute("TSM", "buy", 1, steward.quote("TSM"))
+        assert fake.cancelled
+
+
+class TestWebApprovals:
+    def test_approve_from_the_money_page(self, client, st):
+        client.post("/start")
+        client.post("/meetings", data={"ticker": "TSM"})
+        pid = st.proposals("pending")[0]["id"]
+        assert b"Waiting for your OK" in client.get("/").data
+        before = len(st.trades())
+        client.post(f"/proposals/{pid}/approve")
+        assert len(st.trades()) == before + 1
+        assert b"The council proposes" not in client.get("/").data
+
+    def test_reject_from_the_meeting_page(self, client, st):
+        client.post("/start")
+        client.post("/meetings", data={"ticker": "TSM"})
+        pid = st.proposals("pending")[0]["id"]
+        client.post(f"/proposals/{pid}/reject", data={"next": "/meetings/1"})
+        assert st.proposal(pid)["status"] == "rejected"
+        assert b"You said no" in client.get("/meetings/1").data
+
+    def test_let_the_council_choose(self, client, st):
+        client.post("/start")
+        client.post("/scan")
+        assert st.meetings(50)                            # it met on its own agenda
+        assert st.get_meta("last_scan")["picked"]
+
+
+def test_holdings_are_not_reviewed_the_day_they_are_bought(st, steward, m, pf):
+    from council import scan
+    plan = scan.agenda(st, pf, m, steward.quotes(pf.tickers_needed()))
+    assert not [c for c in plan["picked"] if c["reason"].startswith("Quarterly review")]
+
+
+def test_a_holding_at_its_add_level_is_reviewed_now(st, steward, m, pf):
+    from council import scan
+    q = steward.quote("ASML.AS")
+    plan = scan.agenda(st, pf, m, steward.quotes(pf.tickers_needed()))
+    asml = [c for c in plan["picked"] if c["ticker"] == "ASML.AS"]
+    assert bool(asml) == (q.price_eur <= 1450)
+    if asml:
+        assert asml[0]["kind"] == "holding"

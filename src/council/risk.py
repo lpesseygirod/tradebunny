@@ -114,6 +114,43 @@ def gate(ticker: str, m: Mandate, meetings_this_month: int) -> list[Check]:
     return out
 
 
+# ------------------------------------------------- the CIO's own rules
+
+def policy(ticker: str, d: dict, m: Mandate, quote) -> tuple[list[Check], Conviction]:
+    """Did the CIO's verdict keep the committee's rules? Checked by code.
+
+      - only grade A, or grade B, may be bought
+      - a name with a price or P/E trigger on file is bought only once the
+        trigger is reached at today's price
+      - 'core' conviction (a full position) needs grade A; B gets 'starter'
+    """
+    out: list[Check] = []
+    grade, conviction = d.get("grade", "not_graded"), d.get("conviction", "none")
+    ok = grade in ("A", "B")
+    out.append(Check("Grade allows buying", ok, "Only grade A, or B on its trigger, may be bought",
+                     value=f"grade {grade if grade != 'not_graded' else 'none'}"))
+    w, i = m.watch(ticker), m.instrument(ticker)
+    pe_t = w.trigger_pe if w else None
+    price_t = (w.trigger_price_eur if w else None) or (i.entry_price_eur if i else None)
+    if grade == "B" and (pe_t or price_t):
+        hits, shown = [], []
+        if pe_t and quote.forward_pe:
+            hits.append(quote.forward_pe <= pe_t)
+            shown.append(f"fwd P/E {quote.forward_pe:.1f} {'≤' if hits[-1] else '>'} {pe_t:g}")
+        if price_t:
+            hits.append(quote.price_eur <= price_t)
+            shown.append(f"€{quote.price_eur:,.0f} {'≤' if hits[-1] else '>'} €{price_t:,.0f}")
+        reached = any(hits)
+        out.append(Check("Trigger reached", reached,
+                         "A grade-B name is bought only once its trigger is reached"
+                         + ("" if reached else ": not yet"), value="; ".join(shown) or "no data"))
+    if conviction == "core" and grade != "A":
+        conviction = "starter"
+        out.append(Check("Conviction", True, "A full ('core') position needs grade A; sized as a starter",
+                         blocking=False, value="core → starter"))
+    return out, conviction
+
+
 # ----------------------------------------------------------------- buying
 
 def size_buy(ticker: str, conviction: Conviction, book: Book, m: Mandate,

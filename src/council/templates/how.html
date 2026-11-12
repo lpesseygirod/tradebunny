@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}How it decides · TradeBunny{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>How does the council decide?</h1>
+    <p>Your committee's rules, in order. <span class="pill outline mono" style="font-size:.72rem">code</span> marks a rule a program enforces;
+      the rest the members are told to follow, and the fact-checker and the CIO hold them to it.</p>
+  </div>
+</div>
+
+<div class="grid g2">
+  <section class="card">
+    <h2>1 · What gets discussed</h2>
+    <p class="muted small">The council's agenda is picked by rules, never by mood. "Let the council choose" and the daily job use exactly this order.</p>
+    <ol class="small">
+      <li><b>Watch-list names whose buy trigger is hit</b>: forward P/E or price at or below the committee's entry level. <span class="pill outline mono tiny">code</span></li>
+      <li><b>Names close to their trigger</b>: within 10% on P/E, 5% on price. <span class="pill outline mono tiny">code</span></li>
+      <li><b>Holdings not reviewed for {{ lim.review_holdings_every_days }} days</b>: each stock is re-examined about quarterly. <span class="pill outline mono tiny">code</span></li>
+    </ol>
+    <p class="small">At most <b>{{ lim.max_meetings_per_month }} idea meetings</b> and <b>{{ lim.max_holding_reviews_per_month }} holding reviews</b> a month, and no name twice within 14 days, so it can't overtrade. <span class="pill outline mono tiny">code</span>
+      Event triggers (results dates, filings) are yours to call: a price can't tell a program that an event happened.</p>
+  </section>
+  <section class="card">
+    <h2>2 · The five-point business test</h2>
+    <p class="muted small">"Whoever wins, they must buy from this company." All five must pass for grade A.</p>
+    <ol class="small">
+      <li><b>Few real suppliers:</b> a monopoly, or an oligopoly of 3–4.</li>
+      <li><b>Slow to replace:</b> customers need years to qualify an alternative.</li>
+      <li><b>Small cost, critical:</b> a small share of the customer's cost, so price rises stick.</li>
+      <li><b>Material to revenue:</b> the theme is a real share of sales (Schaeffler's robots are under 1%: fails).</li>
+      <li><b>Self-funded:</b> growth paid from cash flow, not new borrowing.</li>
+    </ol>
+    <p class="small"><b>Then the price test:</b> forward P/E against the company's own 5-year average and its peers, and how it does if rates stay high. A great business at the wrong price goes to the watch list.</p>
+  </section>
+</div>
+
+<section class="card mt">
+  <h2>3 · One meeting, step by step</h2>
+  <ol class="how-steps">
+    <li><div><b>Gate</b> <span class="pill outline mono tiny">code</span><div class="small muted">Is the name in your mandate, is it not rejected, is a meeting slot free? If not, nobody writes a word and nothing is spent.</div></div></li>
+    <li><div><b>Fact sheet</b> <span class="pill outline mono tiny">code</span><div class="small muted">Price, forward P/E, 52-week range, what you hold, the caps, the committee's last view. Every number with its source and time; stale prices are refused.</div></div></li>
+    <li><div><b>Round 1 · four blind memos</b>, written in parallel, nobody seeing the others, each researching the web with dated sources:
+      <div class="small muted"><b>Macro strategist</b>: the economy and the AI spending cycle; never names a stock. · <b>Thesis analyst</b>: the five-point test with this round's evidence only. · <b>Valuation analyst</b>: is it priced in, against its own history and peers. · <b>Red team</b>: a pre-mortem, "two years on we lost 40%: why?", on a different AI model so its blind spots differ.</div></div></li>
+    <li><div><b>Round 2 · cross-examination</b><div class="small muted">The red team reads the thesis and ranks three objections, each with evidence and a test that would prove it right. Generic objections are not allowed. The thesis analyst gets one rebuttal and must concede where the evidence is against it.</div></div></li>
+    <li><div><b>Fact-checker</b><div class="small muted">Checks the claims the decision rests on against the fact sheet and the sources: confirmed, unsupported or contradicted. Unsupported claims count for nothing.</div></div></li>
+    <li><div><b>Risk officer</b><div class="small muted">Which holdings are the same bet, and what each scenario (AI spending cut, rates up, recession, a Taiwan crisis…) does to the stock. Code turns that into the cost to the whole portfolio. May only ask for stricter action.</div></div></li>
+    <li><div><b>CIO verdict</b><div class="small muted">A grade, a decision, a buy trigger and a "sell if" tied to the thesis, with an answer to every objection. "No action" is the default: the burden of proof is on buying.</div></div></li>
+    <li><div><b>Code checks the verdict</b> <span class="pill outline mono tiny">code</span><div class="small muted">Only A, or B with its trigger reached, may be bought. A grade-B name with a price or P/E trigger waits until the trigger is actually reached. A full position needs grade A. A sale needs a named thesis breaker. Then the size: position, Taiwan, AI and stock-count caps, paid from the watch-list reserve first.</div></div></li>
+    <li><div><b>Your OK</b> <span class="pill outline mono tiny">code</span><div class="small muted">Everything allowed becomes a proposal on the Money page. Nothing trades until you approve. Approving re-checks every rule at today's price; an unanswered proposal expires after {{ lim.proposal_days }} days.</div></div></li>
+    <li><div><b>The order</b> <span class="pill outline mono tiny">code</span><div class="small muted">Limit orders at the last price, in {{ lim.tranches }} tranches {{ lim.tranche_spacing_days }} days apart: the first now, the rest at the daily review. {{ 'Paper money at real prices.' if mandate.broker.kind == 'paper' else 'Sent to Interactive Brokers.' }}</div></div></li>
+  </ol>
+</section>
+
+<div class="grid g2 mt">
+  <section class="card">
+    <h2>4 · Grades</h2>
+    <ul class="rows">
+      <li style="align-items:flex-start"><span class="grade A">A</span><div><b>Buy in stages.</b><div class="small muted">Passes all five points and is fairly priced. Full position allowed.</div></div></li>
+      <li style="align-items:flex-start"><span class="grade B">B</span><div><b>Buy on a trigger, or hold small.</b><div class="small muted">A real chokepoint with one open issue: price, debt, missing evidence or a pending event. Bought only once its dated or price trigger is reached, as a starter position.</div></div></li>
+      <li style="align-items:flex-start"><span class="grade C">C</span><div><b>Watch.</b><div class="small muted">Cheap, but an unresolved business problem. Never bought.</div></div></li>
+      <li style="align-items:flex-start"><span class="grade D">D</span><div><b>Avoid.</b><div class="small muted">Fails the business test: theme under 1% of sales, negative cash flow, no earnings, a price war, an extreme multiple.</div></div></li>
+    </ul>
+  </section>
+  <section class="card">
+    <h2>5 · When it sells</h2>
+    <ul class="small">
+      <li><b>Only when a thesis breaker fires</b>, named in the verdict. A price drop alone never sells: 20% falls are routine for 5-year positions. <span class="pill outline mono tiny">code</span></li>
+      <li><b>Trim</b> sells half; <b>sell</b> sells all and cancels any tranches still planned. <span class="pill outline mono tiny">code</span></li>
+      <li>Every sale is a proposal too, and waits for your OK. <span class="pill outline mono tiny">code</span></li>
+      <li>If the whole portfolio falls {{ (lim.max_loss * 100)|round|int }}% below its peak, the Rules page flags the committee's rule: move 10 points from stocks to euro bonds.</li>
+    </ul>
+    <p class="src">From your committee documents: Investment Committee Report (23 Sep), Full Review (2 Oct), Supply Chain Market Review (6 Oct) and the "Trader committee team" design (24 Sep).</p>
+  </section>
+</div>
+{% endblock %}
+{% block footer %}The AI can argue about anything. Code decides what it may do, and you decide what it does.{% endblock %}

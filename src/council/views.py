@@ -157,6 +157,20 @@ def decision_row(mt: dict, m: Mandate) -> dict:
             "kind": mt["kind"], "backend": mt["backend"], "decision": d.get("decision")}
 
 
+def proposal_rows(store: Store, m: Mandate) -> list[dict]:
+    out = []
+    for p in store.proposals("pending"):
+        exp = local(p["expires_at"])
+        days = (exp - datetime.now(exp.tzinfo)).days if exp else None
+        out.append({"id": p["id"], "summary": p["summary"], "ticker": p["ticker"],
+                    "name": m.name_of(p["ticker"]) if p["ticker"] != "INDEX" else "Index ETFs",
+                    "grade": p["data"].get("grade") or "", "meeting_id": p["meeting_id"],
+                    "action": p["action"], "label": p["data"].get("action_label") or "",
+                    "expires": f"expires in {days} day{'s' if days != 1 else ''}" if days is not None and days >= 1
+                               else "expires today"})
+    return out
+
+
 def money(store: Store, pf: Portfolio, m: Mandate, quotes: dict) -> dict:
     book = pf.book(quotes)
     capital = float(store.get_meta("capital_eur", m.start_capital_eur))
@@ -212,6 +226,7 @@ def money(store: Store, pf: Portfolio, m: Mandate, quotes: dict) -> dict:
         "positions": positions, "watch": watch[:6],
         "chips": [w for w in watch if w["status"] != "event"][:3] or watch[:3],
         "decisions": [decision_row(x, m) for x in store.meetings(5)],
+        "proposals": proposal_rows(store, m),
     }
 
 
@@ -219,8 +234,8 @@ def money(store: Store, pf: Portfolio, m: Mandate, quotes: dict) -> dict:
 
 STEPS = [("gate", "Gate", "Code"), ("blind", "Blind memos", "MS · TA · VA · RT"),
          ("objections", "Objections", "RT"), ("rebuttal", "Rebuttals", "TA"),
-         ("riskmemo", "Risk check", "RO"), ("verdict", "Verdict", "CIO"),
-         ("orders", "Orders", "Risk engine")]
+         ("riskmemo", "Risk check", "FC · RO"), ("verdict", "Verdict", "CIO"),
+         ("approval", "Your OK", "You")]
 
 
 def _provenance(step: dict, facts: Optional[dict], backend: str) -> str:
@@ -247,14 +262,18 @@ def debate(store: Store, m: Mandate, mid: int) -> dict:
     engine = next((s for s in steps if s["phase"] == "risk" and s["role"] == "code"
                    and s.get("data") and "checks" in s["data"]), None)
     stopped = [s for s in steps if s["phase"] == "risk" and s["role"] == "code" and not s.get("data")]
+    factcheck = next((s for s in steps if s["role"] == "checker"), None)
+    proposal = next(iter(store.proposals(meeting_id=mid)), None)
 
     present = {"gate": bool(gate), "blind": len(blind) == 4, "objections": bool(objections),
                "rebuttal": bool(rebuttal), "riskmemo": bool(riskmemo), "verdict": bool(cio),
-               "orders": bool(engine)}
+               "approval": bool(engine) and (proposal is None or proposal["status"] != "pending")}
     running = mt["status"] == "running"
     first_missing = next((k for k, *_ in STEPS if not present[k]), None)
+    waiting = proposal is not None and proposal["status"] == "pending"
     stepper = [{"key": k, "label": label, "sub": sub,
-                "state": "done" if present[k] else ("now" if running and k == first_missing else "")}
+                "state": "done" if present[k] else ("now" if (running and k == first_missing)
+                                                    or (waiting and k == "approval") else "")}
                for k, label, sub in STEPS]
 
     memos = []
@@ -347,11 +366,21 @@ def debate(store: Store, m: Mandate, mid: int) -> dict:
                        "status": {"planned": "Scheduled", "done": "Filled", "cancelled": "Cancelled"}[p["status"]],
                        "cls": {"planned": "notyet", "done": "filled", "cancelled": "sell"}[p["status"]]})
 
+    if waiting and not orders:
+        sz = proposal["data"].get("sizing", {})
+        n = m.limits.tranches if proposal["action"] in ("buy", "add") else 1
+        for i in range(n):
+            orders.append({"label": f"{i + 1} of {n}" if n > 1 else proposal["action"].capitalize(),
+                           "name": m.name_of(proposal["ticker"]),
+                           "when": "On your OK" if i == 0 else f"+{m.limits.tranche_spacing_days * i} days",
+                           "amount": (sz.get("tranche_eur") if n > 1 else proposal["amount_eur"]) or 0,
+                           "fee": m.fee_per_order_eur, "status": "Awaiting your OK", "cls": "close"})
+
     eng = None
     if engine:
         e = engine["data"]
         if e["allowed"] and e["amount_eur"] > 0:
-            line, cls = (f"ALLOWED · {'sized to' if e['action'] == 'buy' else 'sell'} "
+            line, cls = (f"ALLOWED · {'proposed' if e['action'] == 'buy' else 'sell'} "
                          f"€{e['amount_eur']:,.0f}" + (f" in {m.limits.tranches} tranches" if e["action"] == "buy" else "")), ""
         elif e["allowed"]:
             line, cls = "NO ORDER · " + (e["checks"][0]["detail"] if e["checks"] else ""), "none"
@@ -366,6 +395,8 @@ def debate(store: Store, m: Mandate, mid: int) -> dict:
             "facts": facts, "facts_body": next((s["body"] for s in steps if s["phase"] == "facts"), ""),
             "gate": gate, "stepper": stepper, "memos": memos, "pairs": pairs, "scen": scen,
             "verdict": verdict, "engine": eng, "orders": orders, "stopped": stopped,
+            "factcheck": (factcheck or {}).get("data", {}).get("output") if factcheck else None,
+            "proposal": proposal,
             "running": running, "blind_count": len(blind)}
 
 

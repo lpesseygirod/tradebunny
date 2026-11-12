@@ -2,13 +2,20 @@
 
     python -m council.cli init          copy the mandate to data/council/ (private)
     python -m council.cli start         open the paper portfolio, first tranche
-    python -m council.cli meet TICKER   hold a meeting and print the verdict
-    python -m council.cli review        the daily review (tranches, triggers, value)
+    python -m council.cli meet TICKER   hold a meeting; a verdict becomes a proposal
+    python -m council.cli scan          let the council pick its own agenda and meet
+    python -m council.cli proposals     what is waiting for your OK
+    python -m council.cli approve ID    approve a proposal: re-check the rules, then trade
+    python -m council.cli reject ID     reject it: nothing is traded
+    python -m council.cli review        tranches you approved, triggers, today's value
+    python -m council.cli daily         review + scan: what the scheduled job runs
+    python -m council.cli schedule ...  install | remove | status: the daily job
     python -m council.cli web           the interface on http://127.0.0.1:8090
     python -m council.cli demo          offline demo in a throwaway folder
 
-Meetings use the Claude API when ANTHROPIC_API_KEY is set, and scripted
-members otherwise. COUNCIL_OFFLINE=1 uses the saved price snapshot.
+Meetings use the Claude API when ANTHROPIC_API_KEY is set (in the shell or
+in .env in the project), and scripted members otherwise. COUNCIL_OFFLINE=1
+uses the saved price snapshot.
 """
 
 from __future__ import annotations
@@ -20,7 +27,8 @@ import tempfile
 
 
 def _parts(offline: bool = False):
-    from . import agents, data, mandate, portfolio, store, web
+    from . import data, mandate, paths, portfolio, store, web
+    paths.load_env()
     m = mandate.load()
     steward = data.Steward(snapshot=offline or os.getenv("COUNCIL_OFFLINE") == "1")
     st = store.Store()
@@ -63,7 +71,101 @@ def cmd_meet(a) -> int:
         o = mt["outcome"] or {}
         print(f"  risk engine: {'allowed' if o.get('allowed') else 'blocked'} "
               f"{'; '.join(o.get('blocked_by') or [])}")
+        if o.get("proposal"):
+            p = st.proposal(o["proposal"])
+            print(f"\n  Proposal #{p['id']}: {p['summary']}")
+            print(f"  Waiting for your OK: council approve {p['id']}   (or: council reject {p['id']})")
     print(f"  cost: ${mt['cost_usd']:.2f}")
+    return 0
+
+
+def cmd_scan(a) -> int:
+    from . import scan
+    m, steward, st, pf, backend = _parts()
+    if not pf.started:
+        print("Open the paper portfolio first: council start", file=sys.stderr)
+        return 2
+    plan = scan.agenda(st, pf, m, steward.quotes(pf.tickers_needed()))
+    if not plan["picked"]:
+        print("Nothing on the agenda today.")
+    for c in plan["picked"]:
+        print(f"- {c['name']}: {c['reason']}")
+    if a.dry_run or not plan["picked"]:
+        return 0
+    print(f"\nThe council meets ({backend.name})...")
+    for mid in scan.run(st, steward, m, pf, backend):
+        mt = st.meeting(mid)
+        d = mt["decision"] or {}
+        print(f"  #{mid} {m.name_of(mt['ticker'])}: {d.get('decision', mt['status'])} "
+              f"{d.get('action_label', mt.get('error') or '')}")
+    return cmd_proposals(a)
+
+
+def cmd_proposals(a) -> int:
+    from . import approvals
+    m, steward, st, pf, _ = _parts()
+    approvals.expire(st)
+    ps = st.proposals("pending")
+    if not ps:
+        print("Nothing is waiting for your OK.")
+    for p in ps:
+        print(f"#{p['id']}  {p['summary']}  (expires {p['expires_at'][:10]})")
+    return 0
+
+
+def cmd_approve(a) -> int:
+    from . import approvals
+    m, steward, st, pf, _ = _parts()
+    try:
+        r = approvals.approve(st, pf, m, a.id)
+    except approvals.ApprovalError as e:
+        print(f"Not placed: {e}", file=sys.stderr)
+        return 1
+    for t in r["trades"]:
+        print(f"{t['side'].upper()} {t['qty']:.4f} {t['ticker']} at {t['price']:,.2f} {t['currency']} "
+              f"= €{t['amount_eur']:,.2f} ({t.get('broker', 'paper')})")
+    for x in r["planned"]:
+        print(f"Planned: {x['note']} on {x['due']}, €{x['amount_eur']:,.2f}")
+    return 0
+
+
+def cmd_reject(a) -> int:
+    from . import approvals
+    m, steward, st, pf, _ = _parts()
+    try:
+        approvals.reject(st, a.id)
+    except approvals.ApprovalError as e:
+        print(e, file=sys.stderr)
+        return 1
+    print("Rejected. Nothing was traded.")
+    return 0
+
+
+def cmd_daily(a) -> int:
+    from . import scan
+    m, steward, st, pf, backend = _parts()
+    if not pf.started:
+        print("Open the paper portfolio first: council start", file=sys.stderr)
+        return 2
+    from datetime import datetime
+    print(f"TradeBunny daily run, {datetime.now():%Y-%m-%d %H:%M} ({backend.name})")
+    meet = backend if not a.no_scan and backend.name == "claude" else None
+    for e in scan.daily(st, steward, m, pf, meet):
+        print("-", e)
+    if not a.no_scan and backend.name != "claude":
+        print("- The council did not meet: no AI key yet. Add ANTHROPIC_API_KEY to .env "
+              "and it will meet on its agenda every evening.")
+    return 0
+
+
+def cmd_schedule(a) -> int:
+    from . import schedule
+    if a.action == "install":
+        print(f"Installed: {schedule.install()}\n{schedule.status()}")
+    elif a.action == "remove":
+        print("Removed." if schedule.remove() else "It was not installed.")
+    else:
+        print(schedule.status())
     return 0
 
 
@@ -109,7 +211,17 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("start")
     mt = sub.add_parser("meet")
     mt.add_argument("ticker")
+    sc = sub.add_parser("scan")
+    sc.add_argument("--dry-run", action="store_true", help="show the agenda without meeting")
+    sub.add_parser("proposals")
+    for name in ("approve", "reject"):
+        x = sub.add_parser(name)
+        x.add_argument("id", type=int)
+    d = sub.add_parser("daily")
+    d.add_argument("--no-scan", action="store_true", help="review only, no meetings")
     sub.add_parser("review")
+    sch = sub.add_parser("schedule")
+    sch.add_argument("action", choices=["install", "remove", "status"])
     for name in ("web", "demo"):
         w = sub.add_parser(name)
         w.add_argument("--port", type=int, default=8090)
@@ -119,7 +231,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     a = build_parser().parse_args(argv)
     return {"init": cmd_init, "start": cmd_start, "meet": cmd_meet, "review": cmd_review,
-            "web": cmd_web, "demo": cmd_demo}[a.command](a)
+            "scan": cmd_scan, "proposals": cmd_proposals, "approve": cmd_approve,
+            "reject": cmd_reject, "daily": cmd_daily, "schedule": cmd_schedule, "web": cmd_web,
+            "demo": cmd_demo}[a.command](a)
 
 
 if __name__ == "__main__":

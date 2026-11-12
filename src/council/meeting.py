@@ -8,7 +8,7 @@
                 the thesis analyst gets one rebuttal
     committee   the risk officer's exposure memo, then the CIO's verdict
     risk        code: the risk engine sizes the verdict or blocks it
-    trade       code: paper orders, first tranche now, the rest scheduled
+    approval    a proposal that waits for YOU; nothing trades until you say yes
 
 Every step is written to the store the moment it exists, so the interface
 shows the debate as it happens and keeps it afterwards exactly as it was.
@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from typing import Optional
 
-from . import agents, risk
+from . import agents, approvals, risk
 from .agents import ROLES, Backend, RoleRefused
 from .data import DataError, Steward
 from .mandate import Mandate
@@ -140,6 +140,7 @@ class Meeting:
     def _record(self, mid: int, phase: str, role_key: str, title: str, res, body: str) -> dict:
         data = {"output": agents.schema_json(res.output),
                 "sources": [s.model_dump() for s in res.sources],
+                "research": res.research,
                 "model": res.model, "cost_usd": round(res.cost_usd, 4)}
         self.store.add_step(mid, phase, role_key, title, body, data)
         return data["output"]
@@ -234,8 +235,18 @@ class Meeting:
         rebuttal = self._record(mid, "cross", "thesis", "Rebuttal", r, r.output.memo)
 
         # --- committee ---------------------------------------------------
-        record = (f"{facts}\n\n## Memos\n" + json.dumps(
-            {**out, "objections": objections, "rebuttal": rebuttal}, indent=1))
+        memos = json.dumps({**out, "objections": objections, "rebuttal": rebuttal}, indent=1)
+        notes = "\n\n".join(f"### {ROLES[k_role].title}\n{res[k].research}"
+                             for k, k_role in (("macro", "macro"), ("thesis", "thesis"),
+                                               ("valuation", "valuation"), ("premortem", "redteam"))
+                             if res[k].research)
+        r = self._ask(mid, "factcheck", "checker",
+                      f"{facts}\n\n## Memos\n{memos}\n\n## The members' research notes\n"
+                      f"{notes or '(none: no member researched the web)'}\n\nCheck the claims "
+                      "the decision will rest on.", agents.FactCheck,
+                      {**ctx, "valuation": out["valuation"]})
+        check = self._record(mid, "committee", "checker", "Fact check", r, r.output.summary)
+        record = f"{facts}\n\n## Memos\n{memos}\n\n## Fact check\n{json.dumps(check, indent=1)}"
         r = self._ask(mid, "risk", "risk", record + "\n\nWrite the portfolio-impact memo.",
                       agents.RiskMemo, ctx)
         risk_memo = self._record(mid, "committee", "risk", "Portfolio impact", r, r.output.memo)
@@ -256,7 +267,11 @@ class Meeting:
         book = self.pf.book()
         action = d["decision"]
         if action in ("buy", "add"):
-            s = risk.size_buy(ticker, d["conviction"], book, self.m)
+            # Code checks the CIO kept the committee's own rules, then sizes.
+            rules, conviction = risk.policy(ticker, d, self.m, self.steward.quote(ticker))
+            s = risk.size_buy(ticker, conviction, book, self.m)
+            s.checks = rules + s.checks
+            s.allowed = not s.blocked_by
         elif action in ("trim", "sell"):
             s = risk.size_sell(ticker, action, d.get("breaker_triggered", ""), book, self.m)
         else:
@@ -268,39 +283,12 @@ class Meeting:
                              "amount_eur": s.amount_eur, "tranche_eur": s.tranche_eur,
                              "target_weight": s.target_weight, "funding": s.funding,
                              "checks": [asdict(c) for c in s.checks]})
-        trades: list[dict] = []
-        if s.allowed and s.action == "buy" and s.amount_eur > 0:
-            index_need = sum(eur for src, eur in s.funding if src.startswith("index"))
-            if index_need > 0:
-                trades += self._sell_index(index_need, mid)
-            trades += self.pf.plan(ticker, s.amount_eur, mid, note=d.get("action_label", ""))
-        elif s.allowed and s.action == "sell":
-            self.store.cancel_tranches(ticker)
-            amount = None if action == "sell" else s.amount_eur
-            t = self.pf.sell(ticker, amount, mid, note=f"breaker: {d.get('breaker_triggered')}")
-            trades += [t] if t else []
-        planned = [x for x in self.store.tranches("planned") if x["meeting_id"] == mid]
-        if trades or planned:
-            body = "\n".join(f"- {t['side'].upper()} {t['qty']:.4f} {t['ticker']} at "
-                             f"{t['price']:,.2f} {t['currency']} = {t['amount_eur']:,.2f} EUR "
-                             f"(fee {t['fee_eur']:.2f})" for t in trades)
-            if planned:
-                body += "\n" + "\n".join(f"- Planned: {p['note']} on {p['due']}, "
-                                         f"{p['amount_eur']:,.2f} EUR" for p in planned)
-            self.store.add_step(mid, "trade", "code", "Paper orders", body,
-                                {"trades": trades, "planned": planned})
+        pid = None
+        if s.allowed and s.action in ("buy", "sell") and s.amount_eur > 0:
+            pid = approvals.propose(self.store, self.m, meeting_id=mid, ticker=ticker,
+                                    decision=d, sizing=s)
+            p = self.store.proposal(pid)
+            self.store.add_step(mid, "approval", "code", "Waiting for your OK", p["summary"],
+                                {"proposal": pid, "expires_at": p["expires_at"]})
         return {"allowed": s.allowed, "action": s.action, "amount_eur": s.amount_eur,
-                "blocked_by": [c.detail for c in s.blocked_by],
-                "trades": len(trades)}
-
-    def _sell_index(self, amount: float, mid: int) -> list[dict]:
-        index = [i for i in self.m.instruments if i.bucket == "index"]
-        held = {i.ticker: v for i in index
-                if (v := self.pf.book().holdings.get(i.ticker, 0.0)) > 0}
-        total = sum(held.values()) or 1.0
-        out = []
-        for t, v in held.items():
-            tr = self.pf.sell(t, amount * v / total, mid, note="funding a new position")
-            if tr:
-                out.append(tr)
-        return out
+                "blocked_by": [c.detail for c in s.blocked_by], "proposal": pid}

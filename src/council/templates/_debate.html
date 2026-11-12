@@ -76,6 +76,20 @@
 </div>
 {% elif running and blind_count == 4 %}<div class="thinking"><i></i>Cross-examination in progress…</div>{% endif %}
 
+{# ---------- fact check ---------- #}
+{% if factcheck %}
+<div class="round"><h2>Committee</h2><span class="muted">First the fact-checker, then the risk officer, then the CIO.</span></div>
+<section class="card">
+  <div class="who" style="margin-bottom:6px">{{ avatar('checker') }}<div><h2 style="font-size:1.3rem">Fact-checker · can the committee rely on this?</h2>
+    <small>Checks the claims the decision rests on against the fact sheet and the members' sources</small></div></div>
+  <p>{{ factcheck.summary }}</p>
+  <ul class="claims">
+    {% for c in factcheck.claims %}<li><span class="pill {{ c.status }}">{{ c.status|capitalize }}</span>
+      <div><b>{{ c.claim }}</b><div class="small muted">{{ c.note }}</div></div></li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 {# ---------- risk officer ---------- #}
 {% if scen %}
 <section class="card mt" style="margin-top:28px">
@@ -118,6 +132,24 @@
       {% if d.answers_to_objections %}<details style="margin-top:8px"><summary style="color:#c9c6bf">Answers to each objection</summary>
         <ol class="small" style="color:#ecebe7">{% for a in d.answers_to_objections %}<li value="{{ a.rank }}">{{ a.answer }}</li>{% endfor %}</ol></details>{% endif %}
     </div>
+    {% if proposal %}
+    <div class="approve-box" id="approve">
+      {% if proposal.status == 'pending' %}
+        <div class="eyebrow" style="color:var(--accent)">Waiting for your OK</div>
+        <p><b>{{ proposal.summary }}.</b> Approving re-checks every rule at today's price, then places the order.</p>
+        <div class="row">
+          <form method="post" action="{{ url_for('approve', pid=proposal.id) }}"><input type="hidden" name="next" value="{{ url_for('meeting_page', mid=mt.id) }}#approve"><button class="btn accent sm">Approve</button></form>
+          <form method="post" action="{{ url_for('reject', pid=proposal.id) }}"><input type="hidden" name="next" value="{{ url_for('meeting_page', mid=mt.id) }}#approve"><button class="btn light sm">Reject</button></form>
+          <span class="tiny muted">Expires {{ proposal.expires_at|stamp }}</span>
+        </div>
+      {% else %}
+        <div class="eyebrow">Your answer</div>
+        <p><b>{{ {'approved':'You approved','rejected':'You said no','expired':'Expired without an answer','failed':'Approved, but not placed'}[proposal.status] }}</b>
+          {% if proposal.decided_at %}· {{ proposal.decided_at|stamp }}{% endif %}
+          {% if proposal.status == 'failed' and proposal.result %}<br><span class="small">{{ proposal.result.why }}</span>{% endif %}</p>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
 </section>
 {% endif %}
@@ -134,7 +166,7 @@
     <div class="allowed {{ engine.cls }}">{{ engine.line }}</div>
   </section>
   <section class="card">
-    <h2 style="margin-bottom:12px">Orders placed</h2>
+    <h2 style="margin-bottom:12px">{{ 'Proposed orders' if proposal and proposal.status == 'pending' else 'Orders placed' }}</h2>
     {% if orders %}
     <div class="table-wrap"><table>
       <tr><th>Tranche</th><th>When</th><th class="r">Amount</th><th class="r">Fee</th><th>Status</th></tr>

@@ -32,3 +32,15 @@ def db_path() -> Path:
 
 EXAMPLE_MANDATE = REPO / "mandate.example.yaml"
 SNAPSHOT = REPO / "examples" / "council" / "quotes_snapshot.json"
+
+
+def load_env() -> None:
+    """Read ANTHROPIC_API_KEY and friends from .env in the project (git-ignored).
+    Values already set in the environment win."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    for f in (REPO / ".env", home() / ".env"):
+        if f.exists():
+            load_dotenv(f, override=False)
