@@ -23,6 +23,7 @@
       <a href="{{ url_for('meetings') }}" class="{{ 'on' if ep == 'meetings' }}">Meetings</a>
       <a href="{{ url_for('portfolio_page') }}" class="{{ 'on' if ep == 'portfolio_page' }}">Portfolio</a>
       <a href="{{ url_for('rules') }}" class="{{ 'on' if ep == 'rules' }}">Rules</a>
+      <a href="{{ url_for('scorecard') }}" class="{{ 'on' if ep in ('scorecard', 'postmortem_page') }}">Scorecard</a>
       <a href="{{ url_for('how') }}" class="{{ 'on' if ep == 'how' }}">How it decides</a>
     </nav>
     <div class="modes">

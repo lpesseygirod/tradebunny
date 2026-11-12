@@ -50,6 +50,7 @@ class Limits(Strict):
     proposal_days: int = Field(default=7, ge=1)          # an unanswered proposal expires
     max_holding_reviews_per_month: int = Field(default=4, ge=0)
     review_holdings_every_days: int = Field(default=90, ge=7)
+    max_postmortems_per_month: int = Field(default=2, ge=0)
 
     @model_validator(mode="after")
     def _order(self) -> "Limits":

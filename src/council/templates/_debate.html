@@ -181,6 +181,10 @@
 </div>
 {% endif %}
 
+{% for pm in postmortems %}
+<section class="card mt dashed" style="margin-top:20px"><div class="eyebrow">Looked back on</div>
+  <p style="margin-top:6px">This decision was examined in <a class="link" href="{{ url_for('postmortem_page', pid=pm.id) }}">post-mortem #{{ pm.id }}</a>: {{ pm.reason|lower }}.</p></section>
+{% endfor %}
 {% if facts %}
 <details class="card mt" style="margin-top:20px"><summary>The fact sheet every member was given</summary>
   <div class="md small" style="margin-top:12px">{{ facts_body|md|safe }}</div></details>

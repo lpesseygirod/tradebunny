@@ -24,7 +24,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from . import approvals, views
+from . import approvals, learning, views
 from .agents import Backend
 from .data import Steward
 from .mandate import Mandate
@@ -127,6 +127,9 @@ def daily(store: Store, steward: Steward, m: Mandate, pf: Portfolio,
     if n:
         events.append(f"{n} unanswered proposal{'s' if n != 1 else ''} expired")
     events += pf.review()
+    n = learning.update_marks(store, steward, m)
+    if n:
+        events.append(f"Scorekeeper: {n} past decision{'s' if n != 1 else ''} measured against the index")
     today = now()[:10]
     if (today >= m.limits.watchlist_deadline and not store.get_meta("deadline_done")
             and not any(p["action"] == "deadline" for p in store.proposals("pending"))):
@@ -145,6 +148,14 @@ def daily(store: Store, steward: Steward, m: Mandate, pf: Portfolio,
             events.append(f"Meeting #{mid} on {c['name']} ({c['reason']}): {d}")
         if not ids:
             events.append("Scan: nothing for the council to discuss today")
+    if backend is not None:
+        left = m.limits.max_postmortems_per_month - learning.postmortems_this_month(store)
+        for case in learning.due_postmortems(store, m)[:max(0, left)]:
+            pid = learning.run_postmortem(store, steward, m, case, backend)
+            pm = store.postmortem(pid)
+            events.append(f"Post-mortem #{pid} on {case['name']}: {case['reason']}"
+                          + (f" ({len(store.lessons('proposed'))} lessons waiting for your OK)"
+                             if pm["status"] == "done" else " (failed)"))
     pending = store.proposals("pending")
     if pending:
         events.append(f"{len(pending)} proposal{'s' if len(pending) != 1 else ''} waiting for your OK")

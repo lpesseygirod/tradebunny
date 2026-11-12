@@ -396,7 +396,7 @@ def debate(store: Store, m: Mandate, mid: int) -> dict:
             "gate": gate, "stepper": stepper, "memos": memos, "pairs": pairs, "scen": scen,
             "verdict": verdict, "engine": eng, "orders": orders, "stopped": stopped,
             "factcheck": (factcheck or {}).get("data", {}).get("output") if factcheck else None,
-            "proposal": proposal,
+            "proposal": proposal, "postmortems": store.postmortems(mid),
             "running": running, "blind_count": len(blind)}
 
 

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Post-mortem #{{ pm.id }} · TradeBunny{% endblock %}
+{% block content %}
+{% set o = pm.data.output if pm.data and pm.data.output else none %}
+<div class="crumb"><a href="{{ url_for('scorecard') }}">Scorecard</a> › Post-mortem #{{ pm.id }}</div>
+<div class="page-head" style="margin-bottom:18px">
+  <div>
+    <h1>{{ mandate.name_of(pm.ticker) }}: what went wrong?</h1>
+    <p>{{ pm.reason }} · examining <a class="link" href="{{ url_for('meeting_page', mid=pm.meeting_id) }}">meeting #{{ pm.meeting_id }}</a>
+      ({{ (mt.decision or {}).decision }}, grade {{ (mt.decision or {}).grade }}, {{ mt.started_at|day }})</p>
+  </div>
+  <span class="pill outline">{{ 'AI' if pm.backend == 'claude' else 'Scripted' }} · ${{ '%.2f'|format(pm.cost_usd or 0) }}</span>
+</div>
+{% if pm.backend == 'scripted' %}<div class="notice" style="margin:0 0 18px">Scripted post-mortem: it lists what the council recorded at the time, without research. With an AI key, the auditor finds what really happened and proposes lessons.</div>{% endif %}
+{% if pm.status == 'failed' %}<div class="flash">This post-mortem failed: {{ pm.data.error }}</div>{% endif %}
+
+{% if o %}
+<div class="grid g2">
+  <section class="card">
+    <div class="eyebrow">What happened</div>
+    <p style="font-size:1.05rem">{{ o.what_happened }}</p>
+    <div class="eyebrow" style="margin-top:14px">The main cause</div>
+    <p><b>{{ o.cause }}</b></p>
+    <div class="md small" style="margin-top:12px">{{ o.memo|md|safe }}</div>
+    {% for s in pm.data.sources %}<p class="tiny"><a href="{{ s.url }}" target="_blank" rel="noopener noreferrer">{{ s.title }}</a>{% if s.date %} · {{ s.date }}{% endif %}</p>{% endfor %}
+  </section>
+  <section class="card">
+    <ul class="rows">
+      <li><span class="grow"><b>Did we consider this?</b><div class="small muted">{{ o.foreseen_by or 'Nobody named it at the time' }}</div></span>
+        <span class="pill {{ {'yes':'ok','partly':'close','no':'over'}[o.foreseen] }}">{{ {'yes':'Yes','partly':'Partly','no':'No'}[o.foreseen] }}</span></li>
+      <li><span class="grow"><b>Did the CIO weigh it?</b><div class="small muted">How the verdict answered that risk</div></span>
+        <span class="pill {{ {'yes':'ok','dismissed':'over','not_raised':'notyet'}[o.cio_weighed_it] }}">{{ o.cio_weighed_it|replace('_', ' ')|capitalize }}</span></li>
+      <li><span class="grow"><b>Judgment or luck?</b><div class="small muted">A sound decision can lose; a careless one can win</div></span>
+        <span class="pill outline">{{ o.judgment|replace('_', ' ')|capitalize }}</span></li>
+    </ul>
+    <h3 style="margin:18px 0 6px">What the numbers say</h3>
+    <div class="table-wrap"><table>
+      <tr><th>After</th><th>Measured</th><th class="r">Stock €</th><th class="r">Index €</th></tr>
+      {% for x in pm.data.facts.marks %}<tr><td>{{ 'decision day' if x.after_days == 0 else ((x.after_days / 30.4)|round|int ~ ' months') }}</td>
+        <td class="small">{{ x.day|day }}</td><td class="r num">{{ '%.2f'|format(x.price_eur) }}</td><td class="r num">{{ '%.2f'|format(x.index_eur) }}</td></tr>{% endfor %}
+    </table></div>
+  </section>
+</div>
+<section class="card mt">
+  <h2 style="margin-bottom:8px">Lessons proposed</h2>
+  <ul class="rows">
+    {% for l in lessons %}
+    <li><span class="grow"><b>{{ l.text }}</b></span>
+      {% if l.status == 'proposed' %}
+      <form method="post" action="{{ url_for('decide_lesson', lid=l.id, action='reject') }}"><input type="hidden" name="next" value="{{ url_for('postmortem_page', pid=pm.id) }}"><button class="btn light sm">Reject</button></form>
+      <form method="post" action="{{ url_for('decide_lesson', lid=l.id, action='approve') }}"><input type="hidden" name="next" value="{{ url_for('postmortem_page', pid=pm.id) }}"><button class="btn accent sm">Approve</button></form>
+      {% else %}<span class="pill {{ 'ok' if l.status == 'approved' else 'notyet' }}">{{ l.status }}</span>{% endif %}</li>
+    {% else %}
+    <li class="muted">No lesson proposed{{ ': the auditor judged this was not a mistake of judgment' if o.judgment != 'bad_judgment' }}.</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}

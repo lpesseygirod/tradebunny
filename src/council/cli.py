@@ -10,6 +10,8 @@
     python -m council.cli review        tranches you approved, triggers, today's value
     python -m council.cli daily         review + scan: what the scheduled job runs
     python -m council.cli schedule ...  install | remove | status: the daily job
+    python -m council.cli scorecard     is the council any good? past calls vs the index
+    python -m council.cli lesson approve|reject ID   decide a post-mortem's lesson
     python -m council.cli web           the interface on http://127.0.0.1:8090
     python -m council.cli demo          offline demo in a throwaway folder
 
@@ -158,6 +160,34 @@ def cmd_daily(a) -> int:
     return 0
 
 
+def cmd_scorecard(a) -> int:
+    from . import learning
+    m, steward, st, pf, _ = _parts()
+    sc = learning.scorecard(st, m)
+    hr = f"{sc['hit_rate'] * 100:.0f}%" if sc["hit_rate"] is not None else "-"
+    print(f"Decisions measured: {sc['measured']} · judged: {sc['judged']} · right: {sc['right']} ({hr})")
+    if not sc["enough"]:
+        print("Too early to judge: a score means something after about 10 judged decisions.")
+    for r in learning.outcomes(st, m)[:20]:
+        lt = r["latest"]
+        res = (f"{lt['excess']:+.1f} pts vs index after {round(lt['horizon'] / 30.4)} mo: {r['verdict']}"
+               if lt else "waiting for its first mark")
+        print(f"  #{r['meeting_id']} {r['name']}: {r['decision']} on {r['date']} · {res}")
+    for c in learning.due_postmortems(st, m):
+        print(f"  Post-mortem due: {c['name']} (#{c['meeting_id']}): {c['reason']}")
+    for x in st.lessons("proposed"):
+        print(f"  Lesson waiting for your OK: #{x['id']} {x['text']}")
+    return 0
+
+
+def cmd_lesson(a) -> int:
+    m, steward, st, pf, _ = _parts()
+    ok = st.decide_lesson(a.id, "approved" if a.action == "approve" else "rejected")
+    print(("Approved: every member reads it before every meeting." if a.action == "approve" else "Rejected.")
+          if ok else "That lesson is not waiting for an answer.")
+    return 0 if ok else 1
+
+
 def cmd_schedule(a) -> int:
     from . import schedule
     if a.action == "install":
@@ -220,6 +250,10 @@ def build_parser() -> argparse.ArgumentParser:
     d = sub.add_parser("daily")
     d.add_argument("--no-scan", action="store_true", help="review only, no meetings")
     sub.add_parser("review")
+    sub.add_parser("scorecard")
+    les = sub.add_parser("lesson")
+    les.add_argument("action", choices=["approve", "reject"])
+    les.add_argument("id", type=int)
     sch = sub.add_parser("schedule")
     sch.add_argument("action", choices=["install", "remove", "status"])
     for name in ("web", "demo"):
@@ -232,7 +266,8 @@ def main(argv=None) -> int:
     a = build_parser().parse_args(argv)
     return {"init": cmd_init, "start": cmd_start, "meet": cmd_meet, "review": cmd_review,
             "scan": cmd_scan, "proposals": cmd_proposals, "approve": cmd_approve,
-            "reject": cmd_reject, "daily": cmd_daily, "schedule": cmd_schedule, "web": cmd_web,
+            "reject": cmd_reject, "daily": cmd_daily, "schedule": cmd_schedule, "scorecard": cmd_scorecard,
+            "lesson": cmd_lesson, "web": cmd_web,
             "demo": cmd_demo}[a.command](a)
 
 

@@ -86,6 +86,33 @@ CREATE TABLE IF NOT EXISTS proposals (
     decided_at TEXT,
     result TEXT                      -- JSON: what happened when it was answered
 );
+CREATE TABLE IF NOT EXISTS marks (
+    meeting_id INTEGER NOT NULL,
+    horizon_days INTEGER NOT NULL,   -- 0 = the day of the decision; then 30, 91, 182, 365
+    day TEXT NOT NULL,               -- when it was measured
+    price_eur REAL NOT NULL,
+    bench_eur REAL NOT NULL,
+    PRIMARY KEY (meeting_id, horizon_days)
+);
+CREATE TABLE IF NOT EXISTS postmortems (
+    id INTEGER PRIMARY KEY,
+    meeting_id INTEGER NOT NULL,     -- the decision being examined
+    ticker TEXT NOT NULL,
+    reason TEXT NOT NULL,            -- why it was triggered
+    status TEXT NOT NULL,            -- running | done | failed
+    backend TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    cost_usd REAL DEFAULT 0,
+    data TEXT                        -- JSON: what happened, the auditor's findings, sources
+);
+CREATE TABLE IF NOT EXISTS lessons (
+    id INTEGER PRIMARY KEY,
+    postmortem_id INTEGER,
+    text TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'proposed',  -- proposed | approved | rejected
+    created_at TEXT NOT NULL,
+    decided_at TEXT
+);
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -282,6 +309,70 @@ class Store:
                           (status, now(), json.dumps(result) if result is not None else None,
                            pid)).rowcount
         return n == 1
+
+    # --------------------------------------------------------------- marks
+
+    def add_mark(self, meeting_id: int, horizon_days: int, day: str,
+                 price_eur: float, bench_eur: float) -> None:
+        with self._conn() as c:
+            c.execute("INSERT OR IGNORE INTO marks(meeting_id,horizon_days,day,price_eur,bench_eur) "
+                      "VALUES(?,?,?,?,?)", (meeting_id, horizon_days, day, price_eur, bench_eur))
+
+    def marks(self, meeting_id: Optional[int] = None) -> list[dict]:
+        sql, args = "SELECT * FROM marks", ()
+        if meeting_id is not None:
+            sql, args = sql + " WHERE meeting_id=?", (meeting_id,)
+        with self._conn() as c:
+            return [dict(r) for r in c.execute(sql + " ORDER BY meeting_id, horizon_days", args).fetchall()]
+
+    # --------------------------------------------------------- post-mortems
+
+    def add_postmortem(self, meeting_id: int, ticker: str, reason: str, backend: str) -> int:
+        with self._conn() as c:
+            cur = c.execute("INSERT INTO postmortems(meeting_id,ticker,reason,status,backend,created_at) "
+                            "VALUES(?,?,?,?,?,?)", (meeting_id, ticker, reason, "running", backend, now()))
+            return int(cur.lastrowid)
+
+    def finish_postmortem(self, pid: int, status: str, data, cost_usd: float = 0.0) -> None:
+        with self._conn() as c:
+            c.execute("UPDATE postmortems SET status=?, data=?, cost_usd=? WHERE id=?",
+                      (status, json.dumps(data), cost_usd, pid))
+
+    def postmortems(self, meeting_id: Optional[int] = None) -> list[dict]:
+        sql, args = "SELECT * FROM postmortems", ()
+        if meeting_id is not None:
+            sql, args = sql + " WHERE meeting_id=?", (meeting_id,)
+        with self._conn() as c:
+            rows = c.execute(sql + " ORDER BY id DESC", args).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["data"] = json.loads(d["data"]) if d["data"] else {}
+            out.append(d)
+        return out
+
+    def postmortem(self, pid: int) -> Optional[dict]:
+        return next((p for p in self.postmortems() if p["id"] == pid), None)
+
+    # -------------------------------------------------------------- lessons
+
+    def add_lesson(self, postmortem_id: Optional[int], text: str) -> int:
+        with self._conn() as c:
+            cur = c.execute("INSERT INTO lessons(postmortem_id,text,created_at) VALUES(?,?,?)",
+                            (postmortem_id, text, now()))
+            return int(cur.lastrowid)
+
+    def lessons(self, status: Optional[str] = None) -> list[dict]:
+        sql, args = "SELECT * FROM lessons", ()
+        if status:
+            sql, args = sql + " WHERE status=?", (status,)
+        with self._conn() as c:
+            return [dict(r) for r in c.execute(sql + " ORDER BY id", args).fetchall()]
+
+    def decide_lesson(self, lid: int, status: str) -> bool:
+        with self._conn() as c:
+            return c.execute("UPDATE lessons SET status=?, decided_at=? WHERE id=? AND status='proposed'",
+                             (status, now(), lid)).rowcount == 1
 
     # ----------------------------------------------------------- snapshots
 

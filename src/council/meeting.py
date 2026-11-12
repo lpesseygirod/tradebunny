@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from typing import Optional
 
-from . import agents, approvals, risk
+from . import agents, approvals, learning, risk
 from .agents import ROLES, Backend, RoleRefused
 from .data import DataError, Steward
 from .mandate import Mandate
@@ -119,6 +119,12 @@ class Meeting:
                       f"- Thesis breakers: {'; '.join(p.get('breakers') or []) or '-'}"]
         else:
             lines.append("- None on file.")
+        past = learning.history_text(self.store, self.m, f["ticker"])
+        if past:
+            lines += ["", "## The council's past calls on this name, and how they turned out", past]
+        lessons = learning.lessons_text(self.store)
+        if lessons:
+            lines += ["", "## Lessons the principal approved from past post-mortems (apply them)", lessons]
         lines += ["", "## Hard limits (enforced by code, not by you)",
                   f"Positions {lim.min_position * 100:.0f}-{lim.max_position * 100:.0f}%, Taiwan max "
                   f"{lim.taiwan_cap * 100:.0f}%, at most {lim.max_single_stocks} single stocks, "
@@ -261,6 +267,8 @@ class Meeting:
         outcome = self.execute(mid, ticker, decision)
         self.store.finish_meeting(mid, "done", cost_usd=self.cost,
                                   decision=decision, outcome=outcome)
+        # Day zero of the scorekeeper: the stock and the index, today.
+        learning.record_start(self.store, self.steward, self.m, mid, ticker)
         return mid
 
     def execute(self, mid: int, ticker: str, d: dict) -> dict:

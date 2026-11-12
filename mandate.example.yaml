@@ -45,6 +45,7 @@ limits:
   proposal_days: 7             # a proposal you have not answered expires
   max_holding_reviews_per_month: 4
   review_holdings_every_days: 90     # each holding is re-examined about quarterly
+  max_postmortems_per_month: 2       # "what went wrong?" reviews of past decisions
 
 # The model portfolio. Weights are the 2 Oct Full Review's two settings.
 # bucket: index | bonds | gold | stock. Reserve and cash are not instruments.

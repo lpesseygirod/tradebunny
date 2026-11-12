@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Scorecard · TradeBunny{% endblock %}
+{% macro pts(x) -%}{% if x is none %}—{% else %}<span class="{{ 'up' if x > 0 else 'down' if x < 0 }}">{{ '+' if x > 0 else ('−' if x < 0 else '') }}{{ '%.1f'|format(x|abs) }} pts</span>{% endif %}{%- endmacro %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Is the council any good?</h1>
+    <p>Every decision is measured against the same money in MSCI World after 1, 3, 6 and 12 months, including the names it refused.</p>
+  </div>
+</div>
+
+{% if not sc.enough %}
+<div class="callout" style="margin-bottom:20px">
+  <b>Too early to judge.</b> {{ sc.judged }} decision{{ 's' if sc.judged != 1 }} measured so far; a score means something after about 10, which takes months.
+  Until then, read these numbers as notes, not a verdict. Luck dominates a handful of trades.
+</div>
+{% endif %}
+
+{% if proposed %}
+<section class="card inbox" style="margin-bottom:20px">
+  <div class="eyebrow" style="color:var(--accent)">Lessons waiting for your OK</div>
+  <h2 style="font-size:1.35rem;margin:6px 0 4px">Approve a lesson and every member reads it before every meeting</h2>
+  <p class="small muted">The council never changes its own rules. You decide which lessons are real and which were bad luck.</p>
+  <ul class="rows">
+    {% for l in proposed %}
+    <li><div class="grow"><b>{{ l.text }}</b>{% if l.postmortem_id %}<div class="small"><a class="link" style="font-size:.85rem" href="{{ url_for('postmortem_page', pid=l.postmortem_id) }}">from post-mortem #{{ l.postmortem_id }}</a></div>{% endif %}</div>
+      <form method="post" action="{{ url_for('decide_lesson', lid=l.id, action='reject') }}"><button class="btn light sm">Reject</button></form>
+      <form method="post" action="{{ url_for('decide_lesson', lid=l.id, action='approve') }}"><button class="btn accent sm">Approve</button></form></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<div class="grid g4">
+  <section class="card"><div class="eyebrow">Calls right</div>
+    <div class="display num" style="font-size:2rem;margin:8px 0 4px">{{ (sc.hit_rate * 100)|round|int ~ '%' if sc.hit_rate is not none else '—' }}</div>
+    <div class="small muted">{{ sc.right }} of {{ sc.judged }} judged · {{ sc.measured - sc.judged }} too close to call</div></section>
+  <section class="card"><div class="eyebrow">Names it bought</div>
+    <div class="display num" style="font-size:2rem;margin:8px 0 4px">{{ pts(sc.bought_avg) }}</div>
+    <div class="small muted">vs the index, average of {{ sc.n_bought }}</div></section>
+  <section class="card"><div class="eyebrow">Names it refused</div>
+    <div class="display num" style="font-size:2rem;margin:8px 0 4px">{{ pts(sc.refused_avg) }}</div>
+    <div class="small muted">vs the index, average of {{ sc.n_refused }}. Lower is better.</div></section>
+  <section class="card"><div class="eyebrow">Mistakes it saw coming</div>
+    <div class="display num" style="font-size:2rem;margin:8px 0 4px">{{ sc.foreseen }} / {{ sc.postmortems }}</div>
+    <div class="small muted">post-mortems where the risk was named at the time</div></section>
+</div>
+
+<section class="card mt">
+  <h2 style="margin-bottom:6px">Each member's record</h2>
+  <p class="small muted">Which voice deserves more weight. Each line needs measured decisions before it says anything.</p>
+  <ul class="rows">
+    <li style="align-items:flex-start"><span class="av c-green">TA</span><div class="grow"><b>Thesis analyst · is "70% likely" right 70% of the time?</b>
+      <div class="small muted">{% if sc.thesis_brier is not none %}Calibration (Brier score) <b>{{ '%.2f'|format(sc.thesis_brier) }}</b> over {{ sc.n_thesis }} theses: 0 is perfect, 0.25 is a coin flip.{% else %}No thesis has been measured yet.{% endif %}</div></div></li>
+    <li style="align-items:flex-start"><span class="av c-amber">VA</span><div class="grow"><b>Valuation analyst · do "not priced in" names beat "priced in" ones?</b>
+      <div class="small muted">Not priced in: {{ pts(sc.val.no) }} ({{ sc.val_n.no }}) · partly: {{ pts(sc.val.partly) }} ({{ sc.val_n.partly }}) · priced in: {{ pts(sc.val.yes) }} ({{ sc.val_n.yes }})</div></div></li>
+    <li style="align-items:flex-start"><span class="av c-red">RT</span><div class="grow"><b>Red team · did it name what went wrong?</b>
+      <div class="small muted">In {{ sc.by_red }} of {{ sc.postmortems }} post-mortem{{ 's' if sc.postmortems != 1 }}, the risk that happened was in the red team's objections.</div></div></li>
+    <li style="align-items:flex-start"><span class="av c-ink">CIO</span><div class="grow"><b>CIO · did it listen?</b>
+      <div class="small muted">{{ sc.dismissed }} post-mortem{{ 's' if sc.dismissed != 1 }} found the CIO dismissed a risk that then happened.
+        {% for k, v in sc.judgments.items() %} · {{ k|replace('_', ' ') }}: {{ v }}{% endfor %}</div></div></li>
+    <li style="align-items:flex-start"><span class="av c-blue">MS</span><div class="grow"><b>Macro strategist</b>
+      <div class="small muted">Not scored: which "world" happened is a judgment, not a number. Its calls are read in the post-mortems.</div></div></li>
+  </ul>
+</section>
+
+{% if due %}
+<section class="card mt">
+  <h2 style="margin-bottom:6px">Post-mortems due</h2>
+  <p class="small muted">Decisions that clearly went wrong. {{ pm_left }} post-mortem slot{{ 's' if pm_left != 1 }} left this month; the daily job runs them when the AI key is set.</p>
+  <ul class="rows">
+    {% for c in due %}
+    <li><div class="grow"><b>{{ c.name }}</b> · {{ c.decision }} <span class="muted small">(#{{ c.meeting_id }})</span><div class="small muted">{{ c.reason }}</div></div>
+      <form method="post" action="{{ url_for('run_postmortem') }}"><input type="hidden" name="meeting_id" value="{{ c.meeting_id }}"><button class="btn dark sm" {{ 'disabled' if not pm_left }}>Run post-mortem</button></form></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="card mt" style="padding:20px 14px 8px">
+  <div style="padding:0 12px"><h2>Every decision, measured</h2>
+    <p class="small muted">Stock minus index, in points. Bought names should be ahead; refused names behind.</p></div>
+  <div class="table-wrap"><table>
+    <tr><th>#</th><th>Decided</th><th>Stock</th><th>Decision</th>{% for h in horizons %}<th class="r">{{ (h / 30.4)|round|int }} mo</th>{% endfor %}<th>Verdict</th></tr>
+    {% for r in rows %}
+    <tr><td class="muted"><a href="{{ url_for('meeting_page', mid=r.meeting_id) }}" style="color:inherit">{{ r.meeting_id }}</a></td>
+      <td class="small" style="white-space:nowrap">{{ r.date|day }}</td>
+      <td><b>{{ r.name }}</b></td>
+      <td><span class="pill {{ r.decision }}">{{ r.decision }}</span></td>
+      {% for h in horizons %}<td class="r num small">{{ pts(r.marks[h].excess) if h in r.marks else '—' }}</td>{% endfor %}
+      <td><span class="pill {{ {'right':'ok','wrong':'over','noise':'notyet','pending':'outline'}[r.verdict] }}">{{ {'right':'Right','wrong':'Wrong','noise':'Too close','pending':'Waiting'}[r.verdict] }}</span></td></tr>
+    {% else %}
+    <tr><td colspan="9" class="muted">No decisions yet. The scorekeeper starts with the first meeting.</td></tr>
+    {% endfor %}
+  </table></div>
+</section>
+
+<div class="grid g2 mt">
+  <section class="card">
+    <h2 style="margin-bottom:8px">Post-mortems</h2>
+    <ul class="rows">
+      {% for p in pms %}{% set o = p.data.output if p.data and p.data.output else none %}
+      <li><div class="grow"><a href="{{ url_for('postmortem_page', pid=p.id) }}" style="color:var(--ink)"><b>#{{ p.id }} {{ mandate.name_of(p.ticker) }}</b></a>
+        <div class="small muted">{{ p.reason }}{% if o %} · {{ o.judgment|replace('_', ' ') }}{% endif %}</div></div>
+        <span class="pill {{ 'ok' if p.status == 'done' else 'over' }}">{{ p.status }}</span></li>
+      {% else %}<li class="muted">None yet. They start when a decision clearly goes wrong.</li>{% endfor %}
+    </ul>
+  </section>
+  <section class="card">
+    <h2 style="margin-bottom:8px">Lessons every member reads</h2>
+    <ul class="rows">
+      {% for l in approved %}<li><span class="grow">{{ l.text }}</span><span class="tiny muted">{{ l.decided_at|day }}</span></li>
+      {% else %}<li class="muted">None approved yet.</li>{% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}
+{% block footer %}The council measures itself; only you decide what it learns.{% endblock %}

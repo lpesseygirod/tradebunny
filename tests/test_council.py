@@ -602,3 +602,101 @@ class TestAnswerFormats:
                     "overlap": "o", "recommendation": "proceed", "memo": "m"}
         out = agents.tidy(agents.RiskMemo.model_validate(risk_raw))
         assert len(out.scenarios) == 6 and out.scenarios[0].stock_move_pct == -100
+
+
+
+# ----------------------------------------------------------------- learning
+
+def age_decision(st, mid, days, start_factor):
+    """Pretend decision #mid was made `days` ago at `start_factor` x today's price."""
+    import sqlite3
+    from datetime import date, timedelta
+    day = (date.today() - timedelta(days=days)).isoformat()
+    c = sqlite3.connect(st.path)
+    c.execute("UPDATE marks SET day=?, price_eur=price_eur*? WHERE meeting_id=? AND horizon_days=0",
+              (day, start_factor, mid))
+    c.commit()
+    c.close()
+
+
+class TestLearning:
+    def test_every_decision_is_marked_on_its_day(self, st, steward, m, pf):
+        mt, _ = run(st, steward, m, pf, "HWM")
+        assert [x["horizon_days"] for x in st.marks(mt["id"])] == [0]
+
+    def test_marks_come_due_as_time_passes(self, st, steward, m, pf):
+        from council import learning
+        mt, _ = run(st, steward, m, pf, "TSM")
+        age_decision(st, mt["id"], 100, 1.0)
+        assert learning.update_marks(st, steward, m) == 2          # 1 and 3 months
+        assert {x["horizon_days"] for x in st.marks(mt["id"])} == {0, 30, 91}
+
+    def test_judging(self):
+        from council.learning import judge
+        assert judge("buy", 8) == "right" and judge("buy", -8) == "wrong"
+        assert judge("watch", -8) == "right" and judge("reject", 25) == "wrong"
+        assert judge("buy", 1) == "noise"
+
+    def test_a_bad_buy_gets_a_post_mortem(self, st, steward, m, pf):
+        from council import learning
+        mt, _ = run(st, steward, m, pf, "TSM")                    # an add
+        age_decision(st, mt["id"], 100, 1.3)                      # it has fallen ~23% since
+        learning.update_marks(st, steward, m)
+        due = learning.due_postmortems(st, m)
+        assert [c["meeting_id"] for c in due] == [mt["id"]]
+
+    def test_a_refused_winner_gets_one_too(self, st, steward, m, pf):
+        from council import learning
+        mt, _ = run(st, steward, m, pf, "HWM")                    # watch
+        age_decision(st, mt["id"], 200, 0.7)                      # it has risen ~43% since
+        learning.update_marks(st, steward, m)
+        assert learning.due_postmortems(st, m)[0]["reason"].startswith("Refused")
+
+    def test_a_post_mortem_reads_what_was_said_at_the_time(self, st, steward, m, pf):
+        from council import learning
+        mt, _ = run(st, steward, m, pf, "TSM")
+        age_decision(st, mt["id"], 100, 1.3)
+        learning.update_marks(st, steward, m)
+        case = learning.due_postmortems(st, m)[0]
+        pid = learning.run_postmortem(st, steward, m, case, agents.ScriptedBackend())
+        pm = st.postmortem(pid)
+        assert pm["status"] == "done"
+        assert "objection 1" in pm["data"]["output"]["foreseen_by"]
+        assert learning.due_postmortems(st, m) == []              # examined once
+
+    def test_only_approved_lessons_reach_the_members(self, st, steward, m, pf):
+        from council import meeting as meeting_mod
+        a = st.add_lesson(None, "Check customer concentration before buying a supplier.")
+        st.add_lesson(None, "A lesson nobody approved.")
+        st.decide_lesson(a, "approved")
+        mt = meeting_mod.Meeting(st, steward, m, pf, agents.ScriptedBackend())
+        text = mt.facts_md(mt.fact_sheet("HWM"))
+        assert "customer concentration" in text and "nobody approved" not in text
+
+    def test_past_calls_are_in_the_next_fact_sheet(self, st, steward, m, pf):
+        from council import learning, meeting as meeting_mod
+        first, _ = run(st, steward, m, pf, "TSM")
+        age_decision(st, first["id"], 100, 1.0)
+        learning.update_marks(st, steward, m)
+        mt = meeting_mod.Meeting(st, steward, m, pf, agents.ScriptedBackend())
+        assert "past calls on this name" in mt.facts_md(mt.fact_sheet("TSM"))
+
+    def test_the_scorecard(self, st, steward, m, pf):
+        from council import learning
+        a, _ = run(st, steward, m, pf, "TSM")
+        b, _ = run(st, steward, m, pf, "HWM")
+        age_decision(st, a["id"], 100, 0.8)                       # bought, then rose: right
+        age_decision(st, b["id"], 100, 0.8)                       # refused, then rose: wrong
+        learning.update_marks(st, steward, m)
+        sc = learning.scorecard(st, m)
+        assert sc["judged"] == 2 and sc["right"] == 1 and not sc["enough"]
+        assert sc["thesis_brier"] is not None
+
+    def test_the_scorecard_page(self, client, st):
+        client.post("/start")
+        client.post("/meetings", data={"ticker": "TSM"})
+        lid = st.add_lesson(None, "Read the debate before approving.")
+        page = client.get("/scorecard").data
+        assert b"Is the council any good?" in page and b"Read the debate" in page
+        client.post(f"/lessons/{lid}/approve")
+        assert st.lessons("approved")

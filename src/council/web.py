@@ -22,7 +22,7 @@ from typing import Callable, Optional
 from flask import (Flask, abort, flash, jsonify, redirect, render_template,
                    request, session, url_for)
 
-from . import agents, approvals, mandate as mandate_mod, paths, risk, scan, views
+from . import agents, approvals, learning, mandate as mandate_mod, paths, risk, scan, views
 from .data import DataError, Steward
 from .meeting import Meeting
 from .portfolio import Portfolio
@@ -258,6 +258,47 @@ def create_app(store: Optional[Store] = None, steward: Optional[Steward] = None,
                                ok=sum(1 for r in rows if r["status"] == "ok"),
                                close=sum(1 for r in rows if r["status"] == "close"),
                                over=sum(1 for r in rows if r["status"] == "over"))
+
+    @app.get("/scorecard")
+    def scorecard():
+        rows = learning.outcomes(store, m)
+        return render_template("scorecard.html", rows=rows, sc=learning.scorecard(store, m),
+                               due=learning.due_postmortems(store, m),
+                               pms=store.postmortems(), proposed=store.lessons("proposed"),
+                               approved=store.lessons("approved"), horizons=learning.HORIZONS,
+                               pm_left=max(0, m.limits.max_postmortems_per_month
+                                           - learning.postmortems_this_month(store)))
+
+    @app.get("/postmortems/<int:pid>")
+    def postmortem_page(pid: int):
+        pm = store.postmortem(pid)
+        if not pm:
+            abort(404)
+        lessons = [x for x in store.lessons() if x["postmortem_id"] == pid]
+        return render_template("postmortem.html", pm=pm, lessons=lessons,
+                               mt=store.meeting(pm["meeting_id"]))
+
+    @app.post("/postmortems")
+    def run_postmortem():
+        mid = int(request.form.get("meeting_id", 0))
+        case = next((c for c in learning.due_postmortems(store, m) if c["meeting_id"] == mid), None)
+        if not case:
+            flash("That decision has no post-mortem due.")
+            return redirect(url_for("scorecard"))
+        if learning.postmortems_this_month(store) >= m.limits.max_postmortems_per_month:
+            flash("No post-mortem slot left this month.")
+            return redirect(url_for("scorecard"))
+        pid = learning.run_postmortem(Store(store.path), steward, m, case, backend_factory())
+        return redirect(url_for("postmortem_page", pid=pid))
+
+    @app.post("/lessons/<int:lid>/<action>")
+    def decide_lesson(lid: int, action: str):
+        if action not in ("approve", "reject"):
+            abort(400)
+        if store.decide_lesson(lid, "approved" if action == "approve" else "rejected"):
+            flash("Lesson approved: every member reads it before every meeting." if action == "approve"
+                  else "Lesson rejected.")
+        return redirect(request.form.get("next") or url_for("scorecard"))
 
     @app.get("/how")
     def how():
