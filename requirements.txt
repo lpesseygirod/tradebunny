@@ -8,3 +8,5 @@ PyYAML>=6.0
 python-dotenv>=1.0.0
 pytest>=8.0.0
 Flask>=3.0.0
+# Optional: GARCH(1,1) volatility forecast. Without it volatility.py falls back to HAR.
+arch>=7.0
