@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Money · TradeBunny{% endblock %}
 {% block content %}
+{% if autopilot %}
+<section class="card autopilot-banner">
+  <div class="eyebrow" style="color:#f4f3ef">Autopilot</div>
+  <h2 style="font-size:1.4rem;margin:6px 0 4px;color:#f4f3ef">The council approves its own proposals here</h2>
+  <p style="color:#d6d3cc;margin:0">Same rules, same €{{ '{:,.0f}'.format(mandate.start_capital_eur) }}, no waiting for you. The risk engine still re-checks every rule before an order, and this book can only ever trade paper money.</p>
+</section>
+{% endif %}
 {% if v.proposals %}
 <section class="card inbox">
   <div class="card-head"><div><div class="eyebrow" style="color:var(--accent)">Waiting for your OK</div>
@@ -89,6 +96,24 @@
   </section>
 </div>
 
+{% if peer_v %}
+<section class="card mt peer">
+  {% if peer_v.started %}
+  <div class="grow"><div class="eyebrow">{{ 'Meanwhile, on autopilot' if book == 'main' else 'Meanwhile, with you approving' }}</div>
+    <div style="display:flex;gap:18px;align-items:baseline;flex-wrap:wrap;margin-top:6px">
+      <span class="display num" style="font-size:1.6rem">{{ peer_v.value|eur(2) }}</span>
+      <span class="{{ 'up' if peer_v.gain >= 0 else 'down' }}" style="font-weight:700">{{ peer_v.gain|pct(2, True) }}</span>
+      <span class="pill {{ 'ok' if peer_v.edge_pts >= 0 else 'over' }}">{{ '%+.2f'|format(peer_v.edge_pts) }} pts vs the index</span>
+      <span class="small muted">{{ peer_v.meetings }} meetings · {{ peer_v.trades }} trades from decisions{% if peer_v.pending %} · {{ peer_v.pending }} waiting for your OK{% endif %}</span>
+    </div></div>
+  <a class="btn light sm" href="{{ peer_v.url }}">Open {{ peer_v.name }} →</a>
+  {% else %}
+  <div class="grow"><div class="eyebrow">{{ peer_v.name }}</div><p class="small muted" style="margin:6px 0 0">Not opened yet.</p></div>
+  <a class="btn light sm" href="{{ peer_v.url }}">Open {{ peer_v.name }} →</a>
+  {% endif %}
+</section>
+{% endif %}
+
 <div class="grid g2 mt">
   <section class="card">
     <div class="card-head"><h2>Recent decisions</h2><a class="link" href="{{ url_for('meetings') }}">All meetings →</a></div>
@@ -123,7 +148,7 @@
     <div class="small muted" style="margin:4px 0 6px">Waiting for a buy trigger</div>
     <ul class="rows">
       {% for w in v.watch %}
-      <li><div class="grow"><b>{{ w.name }}</b><div class="small muted">{{ w.line }}</div></div>
+      <li><div class="grow"><a href="{{ url_for('stock_page', ticker=w.ticker) }}" style="color:var(--ink);text-decoration:none"><b>{{ w.name }}</b></a><div class="small muted">{{ w.line }}</div></div>
         <span class="pill {{ w.status }}">{{ STATUS_LABEL[w.status] }}</span></li>
       {% endfor %}
     </ul>
@@ -132,7 +157,7 @@
     <div class="card-head"><h2>Largest positions</h2><a class="link" href="{{ url_for('portfolio_page') }}">Portfolio →</a></div>
     <ul class="rows">
       {% for p in v.positions %}
-      <li><b class="grow">{{ p.name }}</b>
+      <li><a class="grow" href="{{ url_for('stock_page', ticker=p.ticker) }}" style="color:var(--ink);text-decoration:none"><b>{{ p.name }}</b></a>
         <span class="small muted num">{{ p.weight|pct(2) }}{% if p.target %} of {{ p.target|pct(0) }}{% endif %}</span>
         <span class="num {{ 'up' if p.gain_pct > 0 else ('down' if p.gain_pct < 0 else 'muted') }}" style="width:70px;text-align:right;font-weight:700">
           {{ p.gain_pct|arrow }} {{ (p.gain_pct|abs)|pct }}</span></li>

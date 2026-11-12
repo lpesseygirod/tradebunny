@@ -4,7 +4,7 @@
 <div class="crumb"><a href="{{ url_for('meetings') }}">Meetings</a> › #{{ mt.id }} {{ title }}</div>
 <div class="page-head" style="margin-bottom:18px">
   <div>
-    <h1>{{ title }}</h1>
+    <h1>{{ title }} <a class="link" style="font-size:.95rem;font-family:var(--body);font-weight:600;letter-spacing:0" href="{{ url_for('stock_page', ticker=mt.ticker) }}">the whole story →</a></h1>
     <p class="small" style="font-size:.95rem">{{ subtitle }} · Meeting #{{ mt.id }} · {{ when }}
       · {{ 'holding review' if mt.kind == 'holding' else 'idea meeting' }}</p>
   </div>

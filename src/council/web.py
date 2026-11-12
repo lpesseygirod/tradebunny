@@ -37,6 +37,7 @@ ROLE_STYLE = {
     "cio": ("Chair / CIO", "CIO", "ink"),
     "checker": ("Fact-checker", "FC", "slate"),
     "you": ("You", "YOU", "ink"),
+    "autopilot": ("Autopilot", "AP", "ink"),
     "code": ("Rules (code)", "</>", "slate"),
 }
 
@@ -146,14 +147,17 @@ def default_backend():
 def create_app(store: Optional[Store] = None, steward: Optional[Steward] = None,
                mandate: Optional[mandate_mod.Mandate] = None,
                backend_factory: Callable[[], agents.Backend] = default_backend,
-               token: Optional[str] = None, run_async: bool = True) -> Flask:
+               token: Optional[str] = None, run_async: bool = True,
+               book: str = "main", peer: Optional[dict] = None) -> Flask:
+    """One book's app. `peer` is the other book ({name, url, store, mandate}),
+    summarised on the Money page so the two can be compared."""
     paths.load_env()
     app = Flask(__name__)
     app.secret_key = os.getenv("COUNCIL_SECRET") or os.urandom(24)
     token = token if token is not None else os.getenv("COUNCIL_WEB_TOKEN", "")
-    store = store or Store()
+    store = store or Store(paths.db_path(book))
     steward = steward or Steward(snapshot=os.getenv("COUNCIL_OFFLINE") == "1")
-    m = mandate or mandate_mod.load()
+    m = mandate or mandate_mod.load(paths.mandate_path(book))
     pf = Portfolio(store, steward, m)
     backend_name = backend_factory().name
 
@@ -165,6 +169,7 @@ def create_app(store: Optional[Store] = None, steward: Optional[Steward] = None,
     def inject():
         latest = store.meetings(1)
         return {"backend_name": backend_name, "data_mode": steward.mode,
+                "book": book, "autopilot": m.autopilot, "peer_url": (peer or {}).get("url"),
                 "prices_label": views.prices_label(steward),
                 "latest_meeting": latest[0]["id"] if latest else None,
                 "started": pf.started, "needs_token": bool(token) and not session.get("ok")}
@@ -179,6 +184,21 @@ def create_app(store: Optional[Store] = None, steward: Optional[Steward] = None,
     def quotes():
         return steward.quotes(pf.tickers_needed())
 
+    def _peer_summary() -> Optional[dict]:
+        if not peer:
+            return None
+        ppf = Portfolio(peer["store"], steward, peer["mandate"])
+        if not ppf.started:
+            return {"name": peer["name"], "url": peer["url"], "started": False}
+        q = steward.quotes(ppf.tickers_needed())
+        cap = float(peer["store"].get_meta("capital_eur", peer["mandate"].start_capital_eur))
+        value, bench = ppf.book(q).total, ppf.benchmark_value(q)
+        own = [t for t in peer["store"].trades() if t["meeting_id"]]
+        return {"name": peer["name"], "url": peer["url"], "started": True, "value": value,
+                "gain": value / cap - 1, "edge_pts": (value - bench) / cap * 100,
+                "meetings": len(peer["store"].meetings(500)), "trades": len(own),
+                "pending": len(peer["store"].proposals("pending"))}
+
     # -------------------------------------------------------------- pages
 
     @app.get("/")
@@ -192,6 +212,7 @@ def create_app(store: Optional[Store] = None, steward: Optional[Steward] = None,
         names = [(t, m.name_of(t)) for t in m.universe()]
         approvals.expire(store)
         return render_template("dashboard.html", v=views.money(store, pf, m, q), names=names,
+                               peer_v=_peer_summary(),
                                agenda=scan.agenda(store, pf, m, q),
                                last_scan=store.get_meta("last_scan"),
                                scanning=bool(store.get_meta("scanning")))
@@ -258,6 +279,20 @@ def create_app(store: Optional[Store] = None, steward: Optional[Steward] = None,
                                ok=sum(1 for r in rows if r["status"] == "ok"),
                                close=sum(1 for r in rows if r["status"] == "close"),
                                over=sum(1 for r in rows if r["status"] == "over"))
+
+    @app.get("/stocks/<ticker>")
+    def stock_page(ticker: str):
+        if not pf.started:
+            return redirect(url_for("dashboard"))
+        t = resolve(ticker, m)
+        known = t in m.universe() or m.rejection(t) or pf.quantities().get(t)
+        if not known:
+            abort(404)
+        try:
+            v = views.stock(store, pf, m, steward, t)
+        except DataError as e:
+            return render_template("error.html", error=str(e)), 503
+        return render_template("stock.html", s=v)
 
     @app.get("/scorecard")
     def scorecard():
@@ -381,10 +416,31 @@ def create_app(store: Optional[Store] = None, steward: Optional[Steward] = None,
     return app
 
 
+def create_books(steward: Optional[Steward] = None, **kw) -> Flask:
+    """Both books in one app: yours at /, the Autopilot at /autopilot/."""
+    from werkzeug.middleware.dispatcher import DispatcherMiddleware
+    os.environ.setdefault("COUNCIL_SECRET", os.urandom(24).hex())   # one session for both
+    steward = steward or Steward(snapshot=os.getenv("COUNCIL_OFFLINE") == "1")
+    main_store, auto_store = Store(paths.db_path("main")), Store(paths.db_path("autopilot"))
+    main_m = mandate_mod.load(paths.mandate_path("main"))
+    auto_path = paths.mandate_path("autopilot")
+    if not auto_path.exists():
+        mandate_mod.initialise(book="autopilot")
+    auto_m = mandate_mod.load(auto_path)
+    main_app = create_app(main_store, steward, main_m, book="main",
+                          peer={"name": "Autopilot", "url": "/autopilot/", "store": auto_store,
+                                "mandate": auto_m}, **kw)
+    auto_app = create_app(auto_store, steward, auto_m, book="autopilot",
+                          peer={"name": "With you", "url": "/", "store": main_store,
+                                "mandate": main_m}, **kw)
+    main_app.wsgi_app = DispatcherMiddleware(main_app.wsgi_app, {"/autopilot": auto_app.wsgi_app})
+    return main_app
+
+
 def main() -> None:
     port = int(os.getenv("COUNCIL_PORT", "8090"))
-    app = create_app()
-    print(f"TradeBunny council on http://127.0.0.1:{port}/")
+    app = create_books()
+    print(f"TradeBunny council on http://127.0.0.1:{port}/  (Autopilot: /autopilot/)")
     app.run(host="127.0.0.1", port=port, threaded=True)
 
 

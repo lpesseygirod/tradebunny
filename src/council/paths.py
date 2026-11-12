@@ -16,18 +16,29 @@ def home() -> Path:
     return Path(os.getenv("TRADEBUNNY_HOME", ".")).resolve()
 
 
-def data_dir() -> Path:
-    d = home() / "data" / "council"
+# Two books, same rules: "main" waits for your OK, "autopilot" approves itself.
+BOOKS = {"main": "council", "autopilot": "council-autopilot"}
+
+
+def book() -> str:
+    b = os.getenv("COUNCIL_BOOK", "main")
+    if b not in BOOKS:
+        raise ValueError(f"unknown book {b!r}: use one of {', '.join(BOOKS)}")
+    return b
+
+
+def data_dir(name: str = "") -> Path:
+    d = home() / "data" / BOOKS[name or book()]
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-def mandate_path() -> Path:
-    return data_dir() / "mandate.yaml"
+def mandate_path(name: str = "") -> Path:
+    return data_dir(name) / "mandate.yaml"
 
 
-def db_path() -> Path:
-    return data_dir() / "council.db"
+def db_path(name: str = "") -> Path:
+    return data_dir(name) / "council.db"
 
 
 EXAMPLE_MANDATE = REPO / "mandate.example.yaml"

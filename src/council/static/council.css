@@ -259,3 +259,10 @@ td.num, td.r { white-space: nowrap; }
 .how-steps > li::before { content: counter(s); width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--bg); font-weight: 800; }
 .how-steps .who { margin: 4px 0; }
 .src { font-size: .78rem; color: var(--faint); margin-top: 4px; }
+
+/* ---------------- two books ---------------- */
+.seg.books { padding: 3px; border-radius: 12px; }
+.seg.books a { padding: 6px 12px; font-size: .86rem; }
+.autopilot-banner { background: var(--dark); border-color: var(--dark); margin-bottom: 20px; }
+.peer { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.peer .grow { flex: 1; min-width: 240px; }

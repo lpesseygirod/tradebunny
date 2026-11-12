@@ -7,7 +7,6 @@ silently loosening a limit. Only the principal edits the file.
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -119,6 +118,9 @@ class Mandate(Strict):
     benchmark: str
     fee_per_order_eur: float = Field(ge=0)
     broker: BrokerConfig = BrokerConfig()
+    # Autopilot: the council approves its own proposals. The risk engine still
+    # re-checks every rule; only your approval step is skipped. Paper only.
+    autopilot: bool = False
     limits: Limits
     instruments: list[Instrument]
     watchlist: list[WatchItem] = []
@@ -135,6 +137,8 @@ class Mandate(Strict):
                       if i.bucket == "stock" and i.weights.get(s) > 0]
             if len(stocks) > self.limits.max_single_stocks:
                 raise ValueError(f"{s} holds {len(stocks)} single stocks")
+        if self.autopilot and self.broker.kind != "paper":
+            raise ValueError("autopilot trades paper money only: set broker.kind to paper")
         tickers = [i.ticker for i in self.instruments] + [w.ticker for w in self.watchlist]
         if len(tickers) != len(set(tickers)):
             raise ValueError("a ticker appears twice")
@@ -191,9 +195,15 @@ def load(path: Optional[Path] = None) -> Mandate:
     return Mandate.model_validate(yaml.safe_load(path.read_text()))
 
 
-def initialise(overwrite: bool = False) -> Path:
-    """Copy the example to the private, git-ignored mandate file."""
-    target = paths.mandate_path()
+def initialise(overwrite: bool = False, book: str = "") -> Path:
+    """Copy the example to the private, git-ignored mandate file. The Autopilot
+    book gets the same rules with `autopilot: true`."""
+    book = book or paths.book()
+    target = paths.mandate_path(book)
     if overwrite or not target.exists():
-        shutil.copy(paths.EXAMPLE_MANDATE, target)
+        text = paths.EXAMPLE_MANDATE.read_text()
+        if book == "autopilot":
+            text += ("\n# This book approves its own proposals. Paper money only.\n"
+                     "autopilot: true\n")
+        target.write_text(text)
     return target

@@ -145,7 +145,7 @@
         </div>
       {% else %}
         <div class="eyebrow">Your answer</div>
-        <p><b>{{ {'approved':'You approved','rejected':'You said no','expired':'Expired without an answer','failed':'Approved, but not placed'}[proposal.status] }}</b>
+        <p><b>{{ 'Approved by the autopilot' if proposal.status == 'approved' and proposal.result and proposal.result.by == 'autopilot' else {'approved':'You approved','rejected':'You said no','expired':'Expired without an answer','failed':'Approved, but not placed'}[proposal.status] }}</b>
           {% if proposal.decided_at %}· {{ proposal.decided_at|stamp }}{% endif %}
           {% if proposal.status == 'failed' and proposal.result %}<br><span class="small">{{ proposal.result.why }}</span>{% endif %}</p>
       {% endif %}

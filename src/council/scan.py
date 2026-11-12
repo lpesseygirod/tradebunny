@@ -135,8 +135,12 @@ def daily(store: Store, steward: Steward, m: Mandate, pf: Portfolio,
             and not any(p["action"] == "deadline" for p in store.proposals("pending"))):
         spare = pf.spare_reserve()
         if spare > 1:
-            approvals.propose_deadline(store, m, spare)
-            events.append(f"Proposed: move €{spare:,.0f} of unused reserve into the index (needs your OK)")
+            dl = approvals.propose_deadline(store, m, spare)
+            if m.autopilot:
+                approvals.autopilot(store, pf, m, dl)
+                events.append(f"Autopilot moved €{spare:,.0f} of unused reserve into the index")
+            else:
+                events.append(f"Proposed: move €{spare:,.0f} of unused reserve into the index (needs your OK)")
         else:
             store.set_meta("deadline_done", today)
     if backend is not None:

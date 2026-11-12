@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}{{ s.name }} · TradeBunny{% endblock %}
+{% block content %}
+<div class="crumb"><a href="{{ url_for('portfolio_page') }}">Portfolio</a> › {{ s.name }}</div>
+<div class="page-head" style="margin-bottom:18px">
+  <div>
+    <h1>{{ s.name }}</h1>
+    <p class="small" style="font-size:.95rem">{{ s.ticker }}{% if s.theme %} · {{ s.theme }}{% endif %}{% if s.ai %} · AI-sensitive{% endif %}{% if s.taiwan %} · Taiwan{% endif %}</p>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    {% if s.grade and s.grade in ('A','B','C','D') %}<span class="grade {{ s.grade }}">{{ s.grade }}</span>{% endif %}
+    <span class="pill {{ s.status_cls }}">{{ s.status }}</span>
+    {% if s.in_universe %}<form method="post" action="{{ url_for('convene') }}"><input type="hidden" name="ticker" value="{{ s.ticker }}">
+      <button class="btn dark sm">{{ 'Review this holding' if s.pos else 'Convene the council' }}</button></form>{% endif %}
+  </div>
+</div>
+
+{% if s.q %}
+<div class="grid g4">
+  <section class="card"><div class="eyebrow">Price</div>
+    <div class="display num" style="font-size:1.8rem;margin:8px 0 4px">{{ '%.2f'|format(s.q.price) }} <small class="muted" style="font-size:.9rem">{{ s.q.currency }}</small></div>
+    <div class="small muted">{{ s.q.price_eur|eur(2) }} · {{ s.q.as_of|stamp }}</div></section>
+  <section class="card"><div class="eyebrow">Forward P/E</div>
+    <div class="display num" style="font-size:1.8rem;margin:8px 0 4px">{{ '%.1f'|format(s.q.forward_pe) if s.q.forward_pe else '—' }}</div>
+    <div class="small muted">{% if s.q.from_high is not none %}{{ (s.q.from_high * 100)|round|int }}% below its 52-week high{% endif %}</div></section>
+  <section class="card"><div class="eyebrow">In the portfolio</div>
+    <div class="display num" style="font-size:1.8rem;margin:8px 0 4px">{{ s.pos.weight|pct(2) if s.pos else '—' }}</div>
+    <div class="small muted">{% if s.target %}target {{ s.target|pct(0) }}{% else %}no target: not in the model portfolio{% endif %}</div></section>
+  <section class="card"><div class="eyebrow">Since we bought</div>
+    {% if s.pos %}<div class="display num {{ 'up' if s.pos.gain_eur > 0 else ('down' if s.pos.gain_eur < 0 else '') }}" style="font-size:1.8rem;margin:8px 0 4px">{{ s.pos.gain_pct|pct(1, True) }}</div>
+    <div class="small muted">{{ s.pos.value_eur|eur(2) }} now · {{ s.pos.cost_eur|eur(2) }} paid</div>
+    {% else %}<div class="display" style="font-size:1.8rem;margin:8px 0 4px">—</div><div class="small muted">not held</div>{% endif %}</section>
+</div>
+{% endif %}
+
+<div class="grid g2 mt">
+  <section class="card">
+    <div class="eyebrow">{{ 'Why we own it' if s.pos else ('Why it was rejected' if s.rejected else 'Why we are watching it') }}</div>
+    <p style="font-size:1.15rem;font-weight:600;margin:10px 0 4px">{{ s.rejected or s.why or 'No thesis on file yet: convene the council.' }}</p>
+    {% if not s.rejected %}<p class="tiny muted">From {{ s.why_source }}.</p>{% endif %}
+    {% if s.committee_trigger %}<h3 style="margin-top:16px">The committee's trigger</h3><p class="small">{{ s.committee_trigger }}</p>{% endif %}
+    {% if s.trigger %}<p class="small"><span class="pill {{ s.trigger.status }}">{{ STATUS_LABEL[s.trigger.status] }}</span> {{ s.trigger.line }}</p>{% endif %}
+    {% if s.breakers %}<h3 style="margin-top:16px">We sell if</h3>
+      <ul class="small">{% for b in s.breakers %}<li>{{ b }}</li>{% endfor %}</ul>
+      <p class="tiny muted">Thesis breakers. A price drop alone never sells.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    {% if s.latest %}{% set d = s.latest.d %}
+    <div class="card-head"><div class="eyebrow">The latest verdict · {{ s.latest.date }}</div>
+      <a class="link" href="{{ url_for('meeting_page', mid=s.latest.id) }}">Read the whole debate →</a></div>
+    <div style="display:flex;gap:12px;align-items:center;margin:4px 0 10px">
+      <span class="grade {{ d.grade }}" style="width:44px;height:44px;font-size:1.3rem">{{ d.grade if d.grade != 'not_graded' else '–' }}</span>
+      <div><b style="font-size:1.1rem">{{ d.action_label }}</b><div class="small muted">{{ s.latest.label }}{% if d.conviction != 'none' %} · conviction {{ d.conviction }}{% endif %}{% if s.latest.backend == 'scripted' %} · scripted meeting{% endif %}</div></div>
+    </div>
+    {% if d.buy_trigger and d.buy_trigger|lower != 'none' %}<p class="small"><b>Buy trigger:</b> {{ d.buy_trigger }}</p>{% endif %}
+    <p class="small"><b>Sell if:</b> {{ d.sell_if }}</p>
+    <div class="md small" style="margin-top:10px">{{ s.latest.rationale|md|safe }}</div>
+    {% else %}
+    <div class="eyebrow">The latest verdict</div>
+    <p class="muted" style="margin-top:10px">The council has not discussed {{ s.name }} yet.{% if s.pos %} It is held because it is in your committee's model portfolio.{% endif %}</p>
+    {% endif %}
+  </section>
+</div>
+
+<div class="grid g2 mt">
+  <section class="card">
+    <h2 style="margin-bottom:6px">In the news</h2>
+    <p class="tiny muted" style="margin:0 0 6px">Latest headlines from Yahoo Finance. In a meeting the members read them, then research full articles, filings and results themselves, with dates and sources.</p>
+    <ul class="rows">
+      {% for n in s.news %}<li style="align-items:flex-start"><span class="small muted" style="width:56px;flex:0 0 56px">{{ n.date|day }}</span>
+        <div class="grow"><a href="{{ n.url }}" target="_blank" rel="noopener noreferrer" style="color:var(--ink)"><b>{{ n.title }}</b></a><div class="tiny muted">{{ n.source }}</div></div></li>
+      {% else %}<li class="muted small">{{ 'No headlines found right now.' if s.news_live else 'Headlines appear with live prices (the demo uses a saved snapshot).' }}</li>{% endfor %}
+    </ul>
+  </section>
+  <section class="card">
+    <h2 style="margin-bottom:6px">Every time the council discussed it</h2>
+    <ul class="rows">
+      {% for h in s.history %}
+      <li><span class="grade {{ h.grade }}">{{ h.grade if h.grade in ('A','B','C','D') else '–' }}</span>
+        <div class="grow"><a href="{{ url_for('meeting_page', mid=h.id) }}" style="color:var(--ink)"><b>{{ h.date }}</b></a> <span class="small muted">· #{{ h.id }} · {{ 'holding review' if h.kind == 'holding' else 'idea meeting' }}</span>
+          <div class="small muted">{{ h.action }}{% if h.outcome and h.outcome.latest %} · after {{ (h.outcome.latest.horizon / 30.4)|round|int }} mo: {{ '%+.1f'|format(h.outcome.latest.excess) }} pts vs index ({{ h.outcome.verdict }}){% elif h.decision %} · too recent to judge{% endif %}</div></div>
+        <span class="pill {{ h.decision or 'notyet' }}">{{ h.label }}</span></li>
+      {% else %}<li class="muted small">Never discussed yet.</li>{% endfor %}
+    </ul>
+    {% for p in s.postmortems %}<p class="small" style="margin-top:10px">Looked back on in <a class="link" href="{{ url_for('postmortem_page', pid=p.id) }}">post-mortem #{{ p.id }}</a>: {{ p.reason|lower }}.</p>{% endfor %}
+  </section>
+</div>
+
+{% if s.trades or s.planned %}
+<section class="card mt" style="padding:20px 14px 8px">
+  <h2 style="padding:0 12px;margin-bottom:6px">Trades</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Date</th><th>What</th><th class="r">Quantity</th><th class="r">Price</th><th class="r">Amount</th><th>Why</th></tr>
+    {% for t in s.planned %}<tr><td class="small">{{ t.due|day }}</td><td><span class="pill notyet">Scheduled</span></td><td class="r">—</td><td class="r">—</td>
+      <td class="r num">{{ t.amount_eur|eur(2) }}</td><td class="small muted">{{ t.note }}</td></tr>{% endfor %}
+    {% for t in s.trades %}<tr><td class="small">{{ t.date }}</td><td><span class="pill {{ 'buy' if t.side == 'buy' else 'sell' }}">{{ t.side }}</span></td>
+      <td class="r num">{{ '%.4f'|format(t.qty) }}</td><td class="r num">{{ '%.2f'|format(t.price) }} {{ t.currency }}</td>
+      <td class="r num">{{ t.amount_eur|eur(2) }}</td>
+      <td class="small">{% if t.meeting_id %}<a href="{{ url_for('meeting_page', mid=t.meeting_id) }}" class="link" style="font-size:.85rem">meeting #{{ t.meeting_id }}</a> · {% endif %}<span class="muted">{{ t.note }}</span></td></tr>{% endfor %}
+  </table></div>
+</section>
+{% endif %}
+{% endblock %}

@@ -89,6 +89,7 @@ class Steward:
         self._cache: dict[str, tuple[float, Quote]] = {}
         self._fx: dict[str, tuple[float, float]] = {}
         self.saved_at = ""
+        self._news: dict[str, tuple[float, list[dict]]] = {}
         if snapshot:
             self._load_snapshot()
 
@@ -191,6 +192,36 @@ class Steward:
             if errors:
                 raise DataError("could not price " + "; ".join(errors))
         return out
+
+    def news(self, ticker: str, limit: int = 8) -> list[dict]:
+        """Recent headlines from Yahoo Finance: title, source, date, link.
+
+        Headlines are other people's words: shown as data and given to the
+        council as data, never as instructions. Empty offline or on error,
+        so a missing feed never stops a page or a meeting.
+        """
+        if self.snapshot:
+            return []
+        hit = self._news.get(ticker)
+        if hit and time.time() - hit[0] < 30 * 60:
+            return hit[1][:limit]
+        out: list[dict] = []
+        try:
+            import yfinance as yf
+            for x in yf.Ticker(ticker).news or []:
+                c = x.get("content", x) if isinstance(x, dict) else {}
+                url = ((c.get("canonicalUrl") or {}).get("url")
+                       or (c.get("clickThroughUrl") or {}).get("url") or "")
+                title = (c.get("title") or "").strip()
+                if not title or not url.startswith("http"):
+                    continue
+                out.append({"title": title, "url": url, "date": c.get("pubDate") or "",
+                            "source": (c.get("provider") or {}).get("displayName") or ""})
+        except Exception:
+            out = []
+        out.sort(key=lambda n: n["date"], reverse=True)
+        self._news[ticker] = (time.time(), out)
+        return out[:limit]
 
     def last_update(self) -> str:
         """When the newest number in hand was fetched (ISO), for the header."""

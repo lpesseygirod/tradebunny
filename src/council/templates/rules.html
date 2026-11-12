@@ -32,7 +32,7 @@
     <div class="small muted" style="margin:4px 0 8px">If one comes true, a holding review sells or trims. A price drop alone never sells.</div>
     <div class="table-wrap"><table>
       {% for i in mandate.instruments if i.breakers %}
-      <tr><td style="width:140px"><b>{{ i.name }}</b></td><td class="small">{{ i.breakers|join('; ') }}.</td>
+      <tr><td style="width:140px"><a class="stock" href="{{ url_for('stock_page', ticker=i.ticker) }}">{{ i.name }}</a></td><td class="small">{{ i.breakers|join('; ') }}.</td>
         <td class="r" style="white-space:nowrap">{% if flagged.get(i.ticker) %}<a class="pill sell" href="{{ url_for('meeting_page', mid=flagged[i.ticker]) }}">Flagged · #{{ flagged[i.ticker] }}</a>
           {% else %}<span class="small up" style="font-weight:600">Not triggered</span>{% endif %}</td></tr>
       {% endfor %}

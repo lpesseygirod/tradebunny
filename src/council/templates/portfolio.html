@@ -20,7 +20,7 @@
     {% for p in positions %}{% set pr = progress[p.ticker] %}
     {% set scale = [p.target, p.weight]|max / 0.8 if [p.target, p.weight]|max > 0 else 1 %}
     <tr>
-      <td><b>{{ p.name }}</b> <span class="muted small">{{ mandate.theme_of(p.ticker) }}</span></td>
+      <td><a class="stock" href="{{ url_for('stock_page', ticker=p.ticker) }}">{{ p.name }}</a> <span class="muted small">{{ mandate.theme_of(p.ticker) }}</span></td>
       <td class="r num">{{ p.value_eur|eur(2) }}</td>
       <td class="r num {{ 'up' if p.gain_eur > 0.005 else ('down' if p.gain_eur < -0.005 else 'muted') }}">{{ p.gain_eur|arrow }} {{ p.gain_eur|abs|eur(2) }} · {{ (p.gain_pct|abs)|pct }}</td>
       <td><div style="display:flex;gap:10px;align-items:center">

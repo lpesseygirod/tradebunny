@@ -26,6 +26,12 @@
       <a href="{{ url_for('scorecard') }}" class="{{ 'on' if ep in ('scorecard', 'postmortem_page') }}">Scorecard</a>
       <a href="{{ url_for('how') }}" class="{{ 'on' if ep == 'how' }}">How it decides</a>
     </nav>
+    {% if peer_url %}
+    <nav class="seg books" aria-label="Book">
+      {% if book == 'main' %}<a class="on" href="{{ url_for('dashboard') }}">With you</a><a href="{{ peer_url }}">Autopilot</a>
+      {% else %}<a href="{{ peer_url }}">With you</a><a class="on" href="{{ url_for('dashboard') }}">Autopilot</a>{% endif %}
+    </nav>
+    {% endif %}
     <div class="modes">
       <span class="mode" title="{{ 'Meetings run on the Claude API' if backend_name == 'claude' else 'No API key: members are scripted from the October reviews, no AI' }}">
         <i class="{{ 'green' if backend_name == 'claude' else 'amber' }}"></i>AI: {{ 'Claude' if backend_name == 'claude' else 'Scripted' }}</span>

@@ -489,3 +489,67 @@ def mandate_info(path: Path) -> dict:
         return {"file": "mandate.example.yaml", "edited": "", "own": False}
     mt = datetime.fromtimestamp(path.stat().st_mtime)
     return {"file": "mandate.yaml", "edited": f"{mt.day} {mt.strftime('%b')}", "own": path != paths.EXAMPLE_MANDATE}
+
+
+# ------------------------------------------------------------------- stock
+
+def stock(store: Store, pf: Portfolio, m: Mandate, steward: Steward, ticker: str) -> dict:
+    """Everything about one name: why we hold or watch it, every call and how it went."""
+    from . import learning
+    from .data import DataError
+    try:
+        q = steward.quote(ticker)
+    except DataError:
+        q = None                     # a rejected name may have no price on hand
+    inst, watch, rej = m.instrument(ticker), m.watch(ticker), m.rejection(ticker)
+    held = pf.quantities().get(ticker, 0.0)
+    pos = next((p for p in pf.positions() if p.ticker == ticker), None)
+    if held:
+        status, cls = "Held", "buy"
+    elif watch:
+        status, cls = "Watch list", "watch"
+    elif rej:
+        status, cls = "Rejected", "reject"
+    else:
+        status, cls = "In the model portfolio" if inst else "Not in the mandate", "notyet"
+
+    meetings = [x for x in store.meetings(500) if x["ticker"] == ticker]
+    last = next((x for x in meetings if x["status"] == "done" and x.get("decision")), None)
+    latest = None
+    if last:
+        steps = store.steps(last["id"])
+        thesis = next((s for s in steps if s["role"] == "thesis" and s["phase"] == "blind"), None)
+        cio = next((s for s in steps if s["role"] == "cio"), None)
+        latest = {"id": last["id"], "date": day_label(last["started_at"], year=True),
+                  "d": last["decision"], "label": DECISION_LABEL[last["decision"]["decision"]],
+                  "thesis": ((thesis or {}).get("data") or {}).get("output", {}).get("one_line"),
+                  "breakers": ((thesis or {}).get("data") or {}).get("output", {}).get("thesis_breakers") or [],
+                  "rationale": (cio or {}).get("body", ""), "backend": last["backend"]}
+    outcomes = {r["meeting_id"]: r for r in learning.outcomes(store, m) if r["ticker"] == ticker}
+    history = []
+    for x in meetings:
+        d = x.get("decision") or {}
+        o = outcomes.get(x["id"])
+        history.append({"id": x["id"], "date": day_label(x["started_at"], year=True), "kind": x["kind"],
+                        "decision": d.get("decision"), "label": DECISION_LABEL.get(d.get("decision"), x["status"].capitalize()),
+                        "grade": d.get("grade") or "", "action": d.get("action_label") or x.get("error") or "",
+                        "outcome": o, "backend": x["backend"]})
+    trigger = next((w for w in watch_rows(pf, steward.quotes(pf.tickers_needed())) if w["ticker"] == ticker), None)
+    breakers = list(dict.fromkeys((inst.breakers if inst else []) + ((latest or {}).get("breakers") or [])))
+    trades = [t for t in store.trades(ticker)]
+    return {
+        "ticker": ticker, "name": m.name_of(ticker), "theme": m.theme_of(ticker), "q": q,
+        "status": status, "status_cls": cls, "pos": pos, "target": m.target(ticker),
+        "ai": m.is_ai(ticker), "taiwan": m.is_taiwan(ticker),
+        "why": (latest or {}).get("thesis") or (inst.thesis if inst else (watch.thesis if watch else "")),
+        "why_source": "the latest meeting" if (latest or {}).get("thesis") else "the October committee review",
+        "grade": (latest or {}).get("d", {}).get("grade") or (inst.grade if inst else (watch.grade if watch else "")),
+        "committee_trigger": (inst.trigger if inst else (watch.event if watch else "")),
+        "rejected": rej.reason if rej else "", "latest": latest, "history": history,
+        "trigger": trigger, "breakers": breakers,
+        "trades": [{**t, "date": day_label(t["ts"])} for t in reversed(trades)],
+        "planned": [t for t in store.tranches("planned") if t["ticker"] == ticker],
+        "postmortems": [p for p in store.postmortems() if p["ticker"] == ticker],
+        "news": steward.news(ticker, 8), "news_live": steward.mode == "live",
+        "in_universe": ticker in m.universe(),
+    }

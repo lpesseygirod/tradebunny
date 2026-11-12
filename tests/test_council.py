@@ -700,3 +700,94 @@ class TestLearning:
         assert b"Is the council any good?" in page and b"Read the debate" in page
         client.post(f"/lessons/{lid}/approve")
         assert st.lessons("approved")
+
+
+
+# ---------------------------------------------------------------- autopilot
+
+@pytest.fixture
+def auto_m():
+    r = raw()
+    r["autopilot"] = True
+    return mandate.Mandate.model_validate(r)
+
+
+class TestAutopilot:
+    def test_it_approves_its_own_proposals(self, tmp_path, steward, auto_m):
+        st = store.Store(tmp_path / "auto.db")
+        pf = portfolio.Portfolio(st, steward, auto_m)
+        pf.start()
+        before = len(st.trades())
+        mt, steps = run(st, steward, auto_m, pf, "TSM")
+        assert len(st.trades()) == before + 1                   # traded without anyone
+        p = st.proposals(meeting_id=mt["id"])[0]
+        assert p["status"] == "approved" and p["result"]["by"] == "autopilot"
+        assert any(s["title"] == "Approved by the autopilot" for s in steps)
+
+    def test_it_still_obeys_the_risk_engine(self, tmp_path, steward, auto_m):
+        st = store.Store(tmp_path / "auto.db")
+        pf = portfolio.Portfolio(st, steward, auto_m)
+        pf.start()
+        before = len(st.trades())
+        run(st, steward, auto_m, pf, "HWM")                     # an 11th stock: blocked
+        assert len(st.trades()) == before
+
+    def test_it_can_never_trade_real_money(self):
+        r = raw()
+        r["autopilot"] = True
+        r["broker"] = {"kind": "ibkr"}
+        with pytest.raises(Exception):
+            mandate.Mandate.model_validate(r)
+
+    def test_the_autopilot_book_gets_its_own_rules_file(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TRADEBUNNY_HOME", str(tmp_path))
+        from council import paths
+        path = mandate.initialise(book="autopilot")
+        assert path.parent.name == "council-autopilot"
+        assert mandate.load(path).autopilot is True
+        assert paths.db_path("autopilot") != paths.db_path("main")
+
+    def test_both_books_in_one_app(self, tmp_path, monkeypatch, steward):
+        monkeypatch.setenv("TRADEBUNNY_HOME", str(tmp_path))
+        from council import web
+        app = web.create_books(steward=steward, backend_factory=agents.ScriptedBackend, token="")
+        c = app.test_client()
+        c.post("/start")
+        c.post("/autopilot/start")
+        assert b"Meanwhile, on autopilot" in c.get("/").data
+        page = c.get("/autopilot/").data
+        assert b"approves its own proposals" in page and b"Meanwhile, with you approving" in page
+
+
+# --------------------------------------------------------------- stock page
+
+class TestStockPage:
+    def test_a_held_stock_tells_its_whole_story(self, client, st):
+        client.post("/start")
+        client.post("/meetings", data={"ticker": "TSM"})
+        page = client.get("/stocks/TSM").data
+        for text in (b"Why we own it", b"The latest verdict", b"We sell if",
+                     b"Every time the council discussed it", b"In the news", b"Trades"):
+            assert text in page, text
+
+    def test_a_watch_list_name(self, client):
+        client.post("/start")
+        page = client.get("/stocks/HWM").data
+        assert b"Why we are watching it" in page and b"never discussed" in page.lower()
+
+    def test_a_rejected_name_says_why(self, client):
+        client.post("/start")
+        assert b"Why it was rejected" in client.get("/stocks/SHA0.DE").data
+
+    def test_unknown_names_are_404(self, client):
+        client.post("/start")
+        assert client.get("/stocks/GME").status_code == 404
+
+    def test_headlines_reach_the_fact_sheet(self, st, steward, m, pf, monkeypatch):
+        from council import meeting as meeting_mod
+        monkeypatch.setattr(steward, "news", lambda t, limit=8: [
+            {"title": "TSMC posts record October revenue", "url": "https://example.com/a",
+             "date": "2026-11-12T18:00:00Z", "source": "Example"}])
+        mt = meeting_mod.Meeting(st, steward, m, pf, agents.ScriptedBackend())
+        text = mt.facts_md(mt.fact_sheet("TSM"))
+        assert "record October revenue" in text and "never instructions" in text

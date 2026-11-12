@@ -17,11 +17,16 @@ from pathlib import Path
 
 from . import paths
 
-LABEL = "com.tradebunny.council"
+BASE_LABEL = "com.tradebunny.council"
+
+
+def label() -> str:
+    b = paths.book()
+    return BASE_LABEL if b == "main" else f"{BASE_LABEL}.{b}"
 
 
 def plist_path() -> Path:
-    return Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
+    return Path.home() / "Library" / "LaunchAgents" / f"{label()}.plist"
 
 
 def build(hour: int = 22, minute: int = 15) -> dict:
@@ -29,8 +34,8 @@ def build(hour: int = 22, minute: int = 15) -> dict:
     logs = paths.data_dir() / "logs"
     logs.mkdir(parents=True, exist_ok=True)
     return {
-        "Label": LABEL,
-        "ProgramArguments": [sys.executable, "-m", "council.cli", "daily"],
+        "Label": label(),
+        "ProgramArguments": [sys.executable, "-m", "council.cli", "--book", paths.book(), "daily"],
         "WorkingDirectory": str(root),
         "StartCalendarInterval": {"Hour": hour, "Minute": minute},
         "EnvironmentVariables": {"PYTHONPATH": str(root / "src"),
@@ -48,6 +53,8 @@ def _launchctl(*args: str) -> subprocess.CompletedProcess:
 
 
 def install(hour: int = 22, minute: int = 15) -> Path:
+    if paths.book() == "autopilot":
+        minute = min(59, minute + 20)        # after the main book, not at the same time
     p = plist_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     _launchctl("unload", str(p))                   # replace an older copy cleanly
@@ -68,7 +75,7 @@ def remove() -> bool:
 
 
 def status() -> str:
-    r = _launchctl("list", LABEL)
+    r = _launchctl("list", label())
     if r.returncode != 0:
         return "not scheduled"
     return "scheduled daily at " + "{Hour:02d}:{Minute:02d}".format(
