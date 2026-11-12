@@ -1,12 +1,14 @@
 # TradeBunny
 
+[![tests](https://github.com/lpesseygirod/tradebunny/actions/workflows/ci.yml/badge.svg)](https://github.com/lpesseygirod/tradebunny/actions/workflows/ci.yml)
+
 TradeBunny is a crypto grid-trading system (the app is called **Grid Pilot**). A grid puts buy orders below the price and sell orders above it, so it makes small profits when the price goes up and down without really going anywhere. The hard part is finding markets where that actually happens, and not losing everything when it doesn't.
 
 So most of this project is about **measuring before trading**: it rejects almost every market, and it tells you exactly why.
 
 ![An offline scan: every coin rejected, each with its reasons](docs/media/scan.png)
 
-> Status: the analyst, backtester, executor, risk rules and app are built, with 1,271 tests. It runs on **paper** (simulated money). It has not traded real money.
+> Status: the analyst, backtester, executor, risk rules and app are built, with 1,272 tests. It runs on **paper** (simulated money). It has not traded real money.
 
 **Try it offline** (no API key, no exchange, real OKX candles saved in `examples/`):
 
@@ -76,7 +78,7 @@ Python 3.12 or newer (tested on 3.13 and 3.14).
 
 ```bash
 pip install -r requirements.txt
-python -m pytest                                    # 1,271 tests, offline
+python -m pytest                                    # 1,272 tests, offline
 python scripts/demo.py                              # offline demo: scan + app
 PYTHONPATH=src python -m grid.cli backtest ETH-USDT --candles examples/candles/ETH-USDT_1H.json
 ```

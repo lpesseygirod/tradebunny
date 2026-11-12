@@ -46,7 +46,7 @@ through the Grid Pilot app.
 | `grid/web.py` | The approval app |
 | `ledger/` | The earlier news-prediction journal ([LEDGER.md](LEDGER.md)); the grid reuses its notifier and scoring |
 
-**1,271 tests, all offline.** Run `python -m pytest`.
+**1,272 tests, all offline.** Run `python -m pytest`.
 
 ---
 
