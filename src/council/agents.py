@@ -51,9 +51,19 @@ class Source(BaseModel):
     date: str = ""
 
 
+class ScenarioOdds(BaseModel):
+    """Fixed fields, not a free-form dict: structured output only allows
+    objects with known keys, so a dict would always come back empty."""
+    peace: int = Field(description="Percent, 0-100")
+    stagflation: int = Field(description="Percent, 0-100")
+    ai_bust: int = Field(description="Percent, 0-100: an AI spending bust")
+    rate_cuts: int = Field(description="Percent, 0-100")
+    recession: int = Field(description="Percent, 0-100")
+
+
 class MacroMemo(BaseModel):
     regime: str = Field(description="One line, e.g. 'late cycle, rates high, AI capex still rising'")
-    scenario_odds: dict[str, int] = Field(description="Percent odds for peace, stagflation, ai_bust, rate_cuts, recession; sums to 100")
+    scenario_odds: ScenarioOdds = Field(description="Odds of each world over 12 months; the five add up to 100")
     what_matters_for_this_stock: str
     stance: Stance = Field(description="What the backdrop means for owning this stock")
     key_points: list[str] = Field(description=POINTS)
@@ -65,7 +75,7 @@ class ThesisMemo(BaseModel):
     business_test: BusinessTest
     catalysts: list[str]
     thesis_breakers: list[str] = Field(description="Falsifiable events that would prove the thesis wrong")
-    probability_holds_12m: int = Field(ge=0, le=100)
+    probability_holds_12m: int = Field(description="Percent, 0-100")
     stance: Stance
     key_points: list[str] = Field(description=POINTS)
     memo: str = Field(description="Markdown, under 250 words. Never set a price or a size.")
@@ -84,7 +94,7 @@ class ValuationMemo(BaseModel):
 
 
 class Objection(BaseModel):
-    rank: int = Field(ge=1, le=3)
+    rank: int = Field(description="1 is the strongest objection")
     claim: str = Field(description="A specific, falsifiable risk. Never 'markets are uncertain'.")
     evidence: str
     test: str = Field(description="What observable event would prove this objection right")
@@ -97,7 +107,7 @@ class Premortem(BaseModel):
 
 
 class Objections(BaseModel):
-    objections: list[Objection] = Field(min_length=1, max_length=3)
+    objections: list[Objection] = Field(min_length=1, description="Exactly three, strongest first")
 
 
 class Response(BaseModel):
@@ -114,12 +124,12 @@ class Rebuttal(BaseModel):
 
 class ScenarioMove(BaseModel):
     scenario: str = Field(description="Short name, e.g. 'Base case', 'AI spending cut', 'Taiwan crisis', 'Rates up', 'Recession'")
-    stock_move_pct: int = Field(ge=-100, le=200, description="Your estimate of this stock's move over 12 months in that world, in percent")
+    stock_move_pct: int = Field(description="Your estimate of this stock's move over 12 months in that world, in percent (-100 to 200)")
 
 
 class RiskMemo(BaseModel):
-    scenarios: list[ScenarioMove] = Field(min_length=3, max_length=6,
-                                          description="A base case first, then the worlds that matter most for this stock")
+    scenarios: list[ScenarioMove] = Field(min_length=1,
+                                          description="Three to six: a base case first, then the worlds that matter most for this stock")
     overlap: str = Field(description="One sentence: which existing holdings are the same bet, and why")
     recommendation: Literal["proceed", "stricter", "escalate"]
     memo: str = Field(description="Markdown, under 200 words. You may only ask for stricter action.")
@@ -132,8 +142,8 @@ class Claim(BaseModel):
 
 
 class FactCheck(BaseModel):
-    claims: list[Claim] = Field(min_length=1, max_length=10,
-                                description="The claims the decision will rest on, most important first")
+    claims: list[Claim] = Field(min_length=1,
+                                description="Up to ten claims the decision will rest on, most important first")
     summary: str = Field(description="One or two sentences: can the committee rely on these memos?")
 
 
@@ -152,6 +162,34 @@ class CIODecision(BaseModel):
     breaker_triggered: str = Field(description="For trim or sell only: the named breaker that has fired; else empty")
     answers_to_objections: list[Answer]
     rationale: str = Field(description="Markdown, under 250 words")
+
+
+def _clamp(x: int, lo: int, hi: int) -> int:
+    return max(lo, min(hi, int(x)))
+
+
+def tidy(out: BaseModel) -> BaseModel:
+    """Enforce the limits structured output can only describe, not guarantee:
+    clamp percentages, cap list lengths, renumber ranks. A slightly
+    over-long answer is trimmed instead of failing the whole meeting."""
+    if hasattr(out, "key_points"):
+        out.key_points = [p for p in out.key_points if p.strip()][:4]
+    if isinstance(out, MacroMemo):
+        for k in ScenarioOdds.model_fields:
+            setattr(out.scenario_odds, k, _clamp(getattr(out.scenario_odds, k), 0, 100))
+    elif isinstance(out, ThesisMemo):
+        out.probability_holds_12m = _clamp(out.probability_holds_12m, 0, 100)
+    elif isinstance(out, Objections):
+        out.objections = sorted(out.objections, key=lambda o: o.rank)[:3]
+        for i, o in enumerate(out.objections, start=1):
+            o.rank = i
+    elif isinstance(out, FactCheck):
+        out.claims = out.claims[:10]
+    elif isinstance(out, RiskMemo):
+        out.scenarios = out.scenarios[:6]
+        for sc in out.scenarios:
+            sc.stock_move_pct = _clamp(sc.stock_move_pct, -100, 200)
+    return out
 
 
 # -------------------------------------------------------------------- roles
@@ -333,7 +371,7 @@ class ClaudeBackend:
         if r.stop_reason == "refusal" or r.parsed_output is None:
             raise RoleRefused(f"{role.title} did not return a usable answer "
                               f"(stop reason: {r.stop_reason})")
-        return Result(output=r.parsed_output, sources=sources, research=research,
+        return Result(output=tidy(r.parsed_output), sources=sources, research=research,
                       cost_usd=cost, model=getattr(r, "model", role.model))
 
 
@@ -352,7 +390,7 @@ class ScriptedBackend:
 
     # Each helper reads the context the meeting assembled.
     def _macro(self, c: dict) -> MacroMemo:
-        odds = {"peace": 15, "stagflation": 35, "ai_bust": 15, "rate_cuts": 10, "recession": 25}
+        odds = ScenarioOdds(peace=15, stagflation=35, ai_bust=15, rate_cuts=10, recession=25)
         return MacroMemo(
             regime="Rates high, AI capex still rising (scripted: the October reviews' view)",
             scenario_odds=odds,

@@ -569,3 +569,36 @@ def test_a_holding_at_its_add_level_is_reviewed_now(st, steward, m, pf):
     assert bool(asml) == (q.price_eur <= 1450)
     if asml:
         assert asml[0]["kind"] == "holding"
+
+
+# ------------------------------------------- what structured output allows
+
+class TestAnswerFormats:
+    NAMES = ["MacroMemo", "ThesisMemo", "ValuationMemo", "Premortem", "Objections",
+             "Rebuttal", "FactCheck", "RiskMemo", "CIODecision"]
+
+    def test_no_free_form_fields_reach_the_api(self):
+        """Structured output forces additionalProperties: false on every object,
+        so a dict field would always come back empty."""
+        import json
+        from anthropic.lib._parse._transform import transform_schema
+        for name in self.NAMES:
+            sch = json.dumps(transform_schema(getattr(agents, name).model_json_schema()))
+            assert '"additionalProperties": {' not in sch, name
+
+    def test_the_macro_odds_have_fixed_fields(self):
+        props = agents.ScenarioOdds.model_json_schema()["properties"]
+        assert set(props) == {"peace", "stagflation", "ai_bust", "rate_cuts", "recession"}
+
+    def test_an_overlong_answer_is_trimmed_not_rejected(self):
+        raw = {"objections": [{"rank": r, "claim": f"c{r}", "evidence": "e", "test": "t"}
+                              for r in (4, 2, 1, 3)]}
+        out = agents.tidy(agents.Objections.model_validate(raw))
+        assert [o.rank for o in out.objections] == [1, 2, 3]
+        assert [o.claim for o in out.objections] == ["c1", "c2", "c3"]
+
+    def test_percentages_are_clamped(self):
+        risk_raw = {"scenarios": [{"scenario": "x", "stock_move_pct": -300}] * 8,
+                    "overlap": "o", "recommendation": "proceed", "memo": "m"}
+        out = agents.tidy(agents.RiskMemo.model_validate(risk_raw))
+        assert len(out.scenarios) == 6 and out.scenarios[0].stock_move_pct == -100

@@ -49,6 +49,7 @@
           <p>Bear / base / bull: {{ x.out.bear_base_bull }}</p><p><b>Fair entry: {{ x.out.fair_entry }}</b></p>
         {% elif x.role == 'macro' %}
           <p><b>{{ x.out.regime }}</b></p><p>{{ x.out.what_matters_for_this_stock }}</p>
+          {% if x.out.scenario_odds %}<p class="small">Odds: {% for k, v in x.out.scenario_odds.items() %}{{ k|replace('_', ' ') }} {{ v }}%{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
         {% endif %}
         {{ x.body|md|safe }}
         {% for s in x.sources %}<p class="tiny"><a href="{{ s.url }}" target="_blank" rel="noopener noreferrer">{{ s.title }}</a>{% if s.date %} · {{ s.date }}{% endif %}</p>{% endfor %}
