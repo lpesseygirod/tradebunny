@@ -1,0 +1,27 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# runtime data (candles cache, state, logs, databases)
+data/
+scan_results.md
+
+# local assistant notes
+CLAUDE.md
+
+# python / tooling
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+*.log
+
+# editors / OS
+.DS_Store
+.idea/
+.vscode/

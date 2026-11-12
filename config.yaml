@@ -1,0 +1,121 @@
+# Prediction Ledger configuration.
+# Everything restrictive here is deliberate — see CLAUDE.md before loosening it.
+
+ledger_path: data/ledger.db
+
+# --- Grid Pilot -------------------------------------------------------------
+grid:
+  # How much confidence a proposal needs before it is shown to you.
+  #   strict       >= 0.65   (default)
+  #   balanced     >= 0.50
+  #   exploratory  >= 0.35
+  # Candidates below the line are still scanned and still logged with their
+  # scores — the setting decides what is SHOWN, never what is measured, and
+  # never relaxes a structural gate.
+  permissivity: strict
+
+  # How positions are sized.
+  #   kelly        (default) size for growth: quarter Kelly, capped by risk,
+  #                exposure and concurrency.
+  #   calibration  size for FEASIBILITY at very small capital. The goal is
+  #                measuring execution quality — fill rate, slippage, fee
+  #                accuracy, uptime — not returns, because at 50 EUR the P&L
+  #                is noise. Every proposal still shows what Kelly would have
+  #                said, and calibration will not hand back to Kelly sizing
+  #                until 50 fills have been recorded.
+  mode: kelly
+
+# Round-trip trading friction in basis points, subtracted from every excess return.
+# An edge smaller than this is not an edge.
+cost_bps: 10
+
+signals:
+  min_insiders: 3            # Form 4 cluster: how many distinct insiders buying
+  min_cluster_usd: 250000    # and the minimum combined open-market purchase value
+  max_per_day: 3             # hard cap; a quota would manufacture garbage
+  max_source_age_hours: 72
+
+# Kill criteria. Set in advance, honoured without renegotiation.
+kill_criteria:
+  min_resolved: 100
+  min_mean_excess_pct: 0.15
+  max_brier: 0.25
+
+# Benchmarks. Every prediction is scored against one of these, never against zero.
+benchmarks:
+  broad: SPY
+  materials: XLB
+  industrials: XLI
+  energy: XLE
+  technology: XLK
+  communication: XLC
+  consumer_discretionary: XLY
+  consumer_staples: XLP
+  healthcare: XLV
+  financials: XLF
+  utilities: XLU
+  real_estate: XLRE
+  retail: XRT
+  semis: SMH
+
+# The tradeable universe. Only these tickers are eligible — this is what stops the
+# model from "discovering" an illiquid microcap that moved 30% on no volume.
+# Start small and liquid. Expand deliberately, never mid-experiment.
+universe:
+  # materials & industrials
+  - WY
+  - NUE
+  - CF
+  - DOW
+  - LIN
+  - CAT
+  - DE
+  - CNH
+  - HON
+  - GE
+  - UNP
+  - CSX
+  # energy
+  - XOM
+  - CVX
+  - SLB
+  - HAL
+  - MTDR
+  - OXY
+  # technology & semis
+  - AAPL
+  - MSFT
+  - NVDA
+  - AMD
+  - INTC
+  - AVGO
+  - MU
+  - AMAT
+  - TSM
+  # communication & consumer
+  - GOOGL
+  - META
+  - NFLX
+  - DIS
+  - TTWO
+  - EA
+  - AMZN
+  - HD
+  - LOW
+  - NKE
+  - SBUX
+  - MCD
+  - KSS
+  - TGT
+  - WMT
+  # healthcare & financials
+  - JNJ
+  - PFE
+  - MRK
+  - UNH
+  - LLY
+  - JPM
+  - BAC
+  - GS
+  - MS
+  - BRK.B

@@ -1,0 +1,10 @@
+# anthropic removed — the grid package has no AI at runtime. The separate
+# ledger/ package still imports it; reinstate if you run that side.
+# anthropic>=0.40.0
+numpy>=1.26.0
+statsmodels>=0.14.0
+requests>=2.32.0
+PyYAML>=6.0
+python-dotenv>=1.0.0
+pytest>=8.0.0
+Flask>=3.0.0
