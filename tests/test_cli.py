@@ -739,3 +739,15 @@ def test_backtest_replays_a_saved_candle_file_without_the_network(monkeypatch, c
     assert "data window: 300 bars" in out
     assert "ETH-USDT:" in out
     assert code in (0, 1)
+
+
+def test_drift_check_runs_on_a_machine_that_just_booted(control, dirs, monkeypatch):
+    """time.monotonic() counts from boot. With a fresh boot it is smaller than the
+    daily interval, and the first drift check used to be skipped until uptime
+    passed a day. Found by CI, where the runner had just started."""
+    calls = []
+    monkeypatch.setattr(cli.time, "monotonic", lambda: 30.0)   # 30 s after boot
+    monkeypatch.setattr(cli, "check_drift", lambda *a, **k: calls.append(1))
+    run_loop(control, exchange=PaperExchange(dirs["state_dir"] / "paper.json", quote=1000.0),
+             interval=0.0, max_passes=2, sleep=lambda s: None, notify=lambda m: None, **dirs)
+    assert calls == [1]

@@ -3,6 +3,8 @@
 import plistlib
 import subprocess
 
+import shutil
+
 import pytest
 
 from grid import service
@@ -15,6 +17,7 @@ class TestThePlist:
     def test_it_is_valid_plist_xml(self):
         assert plistlib.loads(render())["Label"] == LABEL
 
+    @pytest.mark.skipif(shutil.which("plutil") is None, reason="plutil is a macOS tool")
     def test_it_lints(self, tmp_path):
         """plutil is the arbiter, not our own parser."""
         p = tmp_path / "a.plist"

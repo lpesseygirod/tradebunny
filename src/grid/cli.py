@@ -154,15 +154,17 @@ def run_loop(control: Control, *, exchange=None, plans_dir: Path = PLANS_DIR,
             pass          # not the main thread (a test, or an embedded run)
 
     passes = 0
-    last_drift = 0.0
+    last_drift = None   # None = not run yet. Never compare against 0: time.monotonic()
+                        # counts from boot, so a freshly started machine would skip the first check.
     try:
         while not stopping["now"]:
             plans = live_plans(plans_dir)
 
             # Daily: has the thesis behind any running grid decayed? The stop
             # only catches a fast break; this is the check for a slow one.
-            if drift_interval > 0 and (time.monotonic() - last_drift
-                                       ) >= drift_interval:
+            if drift_interval > 0 and (last_drift is None or
+                                       time.monotonic() - last_drift
+                                       >= drift_interval):
                 last_drift = time.monotonic()
                 try:
                     check_drift(control, plans_dir=plans_dir,
