@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}TradeBunny{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='council.css') }}">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="{{ url_for('dashboard') }}" aria-label="TradeBunny home">
+      <svg viewBox="0 0 22 28" aria-hidden="true"><rect x="3" y="0" width="5" height="13" rx="2.5" fill="var(--accent)"/><rect x="14" y="0" width="5" height="13" rx="2.5" fill="var(--accent)"/><ellipse cx="11" cy="19" rx="9" ry="9" fill="var(--ink)"/></svg>
+      TradeBunny</a>
+    <nav class="tabs">
+      {% set ep = request.endpoint %}
+      <a href="{{ url_for('dashboard') }}" class="{{ 'on' if ep == 'dashboard' }}">Money</a>
+      {% if latest_meeting %}<a href="{{ url_for('meeting_page', mid=latest_meeting) }}" class="{{ 'on' if ep == 'meeting_page' }}">Meeting</a>
+      {% else %}<span title="No meeting yet">Meeting</span>{% endif %}
+      <a href="{{ url_for('meetings') }}" class="{{ 'on' if ep == 'meetings' }}">Meetings</a>
+      <a href="{{ url_for('portfolio_page') }}" class="{{ 'on' if ep == 'portfolio_page' }}">Portfolio</a>
+      <a href="{{ url_for('rules') }}" class="{{ 'on' if ep == 'rules' }}">Rules</a>
+    </nav>
+    <div class="modes">
+      <span class="mode" title="{{ 'Meetings run on the Claude API' if backend_name == 'claude' else 'No API key: members are scripted from the October reviews, no AI' }}">
+        <i class="{{ 'green' if backend_name == 'claude' else 'amber' }}"></i>AI: {{ 'Claude' if backend_name == 'claude' else 'Scripted' }}</span>
+      <span class="mode" title="Every number carries its source and time"><i class="{{ 'green' if data_mode == 'live' else '' }}"></i>Prices: {{ prices_label }}</span>
+    </div>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    {% for msg in get_flashed_messages() %}<div class="flash">{{ msg }}</div>{% endfor %}
+    {% if needs_token %}<div class="flash">Read-only: open this page once with <code>?token=…</code> to convene meetings.</div>{% endif %}
+    {% block content %}{% endblock %}
+  </div>
+</main>
+<footer class="foot"><div class="wrap">
+  <span>{% block footer %}Every number carries its source and time. Prices: {{ prices_label|lower }}.{% endblock %}</span>
+  <span>Paper money at real prices · not financial advice</span>
+</div></footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>

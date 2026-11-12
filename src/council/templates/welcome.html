@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Open the portfolio · TradeBunny{% endblock %}
+{% block content %}
+<div class="grid g-hero">
+  <section class="card">
+    <div class="eyebrow">Paper portfolio</div>
+    <h1 style="margin:10px 0 8px">Open the council's paper portfolio</h1>
+    <p class="muted">It starts from your committee report's model portfolio ({{ mandate.setting }} setting) with
+      <b style="color:var(--ink)">{{ mandate.start_capital_eur|eur }}</b> of paper money, bought in {{ mandate.limits.tranches }} tranches a month apart,
+      limit orders only, {{ mandate.fee_per_order_eur|eur(2) }} per order. From then on it is measured against the same money in the MSCI World ETF.</p>
+    <form method="post" action="{{ url_for('start') }}" style="margin-top:18px;max-width:340px">
+      <button class="btn accent">Open it and buy the first tranche</button></form>
+  </section>
+  <section class="card">
+    <h2 style="margin-bottom:8px">Model portfolio</h2>
+    <ul class="rows">
+      {% for i in mandate.instruments if i.weights.get(mandate.setting) > 0 %}
+      <li><span class="grow"><b>{{ i.name }}</b> <span class="muted small">{{ i.theme }}</span></span><span class="small">{{ i.weights.get(mandate.setting)|pct(0) }}</span></li>
+      {% endfor %}
+      <li><span class="grow">Watch-list reserve</span><span class="small">{{ mandate.reserve_target()|pct(0) }}</span></li>
+      <li><span class="grow">Cash</span><span class="small">{{ mandate.limits.cash_target.get(mandate.setting)|pct(0) }}</span></li>
+    </ul>
+  </section>
+</div>
+{% endblock %}

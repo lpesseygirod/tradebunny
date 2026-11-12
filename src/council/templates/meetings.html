@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Meetings · TradeBunny{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>What has the council decided?</h1>
+    <p>{% if total %}{{ total }} meeting{{ 's' if total != 1 }} since {{ since }} · {{ buys }} buy{{ 's' if buys != 1 }}, {{ watches }} watch, {{ avoids }} avoid · total AI cost ${{ '%.2f'|format(cost) }}
+      {% else %}No meetings yet.{% endif %}</p>
+  </div>
+  <nav class="seg" aria-label="Filter">
+    {% for key, label in [('all','All'),('buy','Buy'),('watch','Watch'),('avoid','Avoid')] %}
+    <a href="{{ url_for('meetings', f=key) }}" class="{{ 'on' if f == key }}">{{ label }}</a>{% endfor %}
+  </nav>
+</div>
+<section class="card" style="padding:8px 14px">
+  <div class="table-wrap"><table>
+    <tr><th>#</th><th>Date</th><th>Stock</th><th>Grade</th><th>Decision</th><th>Buy trigger</th><th>Sell if</th><th class="r">AI cost</th></tr>
+    {% for r in rows %}
+    <tr>
+      <td class="muted">{{ r.id }}</td>
+      <td style="white-space:nowrap">{{ r.date }}</td>
+      <td><a class="stock" href="{{ url_for('meeting_page', mid=r.id) }}">{{ r.name }}</a></td>
+      <td><span class="grade {{ r.grade }}">{{ r.grade if r.grade in ('A','B','C','D') else '–' }}</span></td>
+      <td><span class="pill {{ r.cls }}">{{ r.label }}</span>
+        {% if r.blocked %}<div class="tiny down" style="margin-top:4px">Blocked: {{ r.blocked|join('; ') }}</div>{% endif %}</td>
+      <td class="small">{{ r.trigger or ('—' if r.decision else r.sub) }}</td>
+      <td class="small">{{ r.sell_if or '—' }}</td>
+      <td class="r num">${{ '%.2f'|format(r.cost) }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" class="muted">Nothing here yet.</td></tr>
+    {% endfor %}
+  </table></div>
+</section>
+{% endblock %}
+{% block footer %}Click a stock to open its meeting.{% if backend_name != 'claude' %} Costs show $0.00 while members run scripted.{% endif %}{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width:640px;margin:40px auto">
+  <h1>Prices are unavailable</h1>
+  <p>{{ error }}</p>
+  <p class="muted small">The council never decides on numbers it cannot source. Check the connection and reload,
+    or start the app with <code>COUNCIL_OFFLINE=1</code> to use the saved price snapshot.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Portfolio · TradeBunny{% endblock %}
+{% block content %}
+<div class="page-head"><h1>What do I own?</h1></div>
+<div class="grid g4">
+  <section class="card"><div class="eyebrow">Value</div><div class="display num" style="font-size:2rem;margin:8px 0 4px">{{ book.total|eur(2) }}</div>
+    <div class="small {{ 'up' if book.total >= capital else 'down' }}">{{ (book.total - capital)|arrow }} {{ (book.total - capital)|abs|eur(2) }} <span class="muted">since {{ started }}</span></div></section>
+  <section class="card"><div class="eyebrow">Invested</div><div class="display num" style="font-size:2rem;margin:8px 0 4px">{{ invested|eur(2) }}</div>
+    <div class="small muted">{{ paid|eur(2) }} paid · {{ (invested / book.total)|pct }} of value</div></section>
+  <section class="card"><div class="eyebrow">Cash</div><div class="display num" style="font-size:2rem;margin:8px 0 4px">{{ book.cash|eur(2) }}</div>
+    <div class="small muted">{{ (book.cash / book.total)|pct }} · {{ promised|eur(0) }} waiting for tranches</div></section>
+  <section class="card"><div class="eyebrow">Fees paid</div><div class="display num" style="font-size:2rem;margin:8px 0 4px">{{ fees|eur(2) }}</div>
+    <div class="small muted">{{ n_trades }} trade{{ 's' if n_trades != 1 }} at {{ mandate.fee_per_order_eur|eur(0) }}</div></section>
+</div>
+
+<section class="card mt" style="padding:20px 14px 8px">
+  <div class="card-head" style="padding:0 12px"><h2>Positions</h2><span class="tiny muted">Bar: weight now · tick: target</span></div>
+  <div class="table-wrap"><table>
+    <tr><th>Holding</th><th class="r">Value</th><th class="r">Gain</th><th style="min-width:220px">Weight vs target</th><th>Tranches</th></tr>
+    {% for p in positions %}{% set pr = progress[p.ticker] %}
+    {% set scale = [p.target, p.weight]|max / 0.8 if [p.target, p.weight]|max > 0 else 1 %}
+    <tr>
+      <td><b>{{ p.name }}</b> <span class="muted small">{{ mandate.theme_of(p.ticker) }}</span></td>
+      <td class="r num">{{ p.value_eur|eur(2) }}</td>
+      <td class="r num {{ 'up' if p.gain_eur > 0.005 else ('down' if p.gain_eur < -0.005 else 'muted') }}">{{ p.gain_eur|arrow }} {{ p.gain_eur|abs|eur(2) }} · {{ (p.gain_pct|abs)|pct }}</td>
+      <td><div style="display:flex;gap:10px;align-items:center">
+        <div class="track" style="flex:1;margin:0"><i style="width:{{ [p.weight / scale * 100, 100]|min }}%"></i>
+          {% if p.target %}<b style="left:calc({{ p.target / scale * 100 }}% - 1px)"></b>{% endif %}</div>
+        <span class="small num" style="white-space:nowrap"><b>{{ p.weight|pct(2) }}</b> <span class="muted">/ {{ p.target|pct(0) if p.target else '—' }}</span></span></div></td>
+      <td class="small" style="white-space:nowrap">{% if pr[1] %}<span class="dots">{% for i in range(pr[1]) %}{{ '●' if i < pr[0] else '○' }}{% endfor %}</span> {{ pr[0] }} of {{ pr[1] }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</section>
+
+<div class="grid mt" style="grid-template-columns:minmax(0,1fr) minmax(0,1.75fr)">
+  <section class="card">
+    <h2>Planned tranches</h2>
+    <div class="small muted" style="margin:4px 0 8px">Each buys on its due date, at the daily review</div>
+    <ul class="rows">
+      {% for t in tranches %}
+      <li><span class="small muted" style="width:52px">{{ t.due|day }}</span><span class="grow"><b>{{ mandate.name_of(t.ticker) }}</b>
+        <span class="muted small">· {{ t.note|replace('tranche ', '') }}</span></span><span class="num">{{ t.amount_eur|eur(0) }}</span></li>
+      {% else %}<li class="muted">Nothing scheduled.</li>{% endfor %}
+    </ul>
+  </section>
+  <section class="card" style="padding:20px 14px 8px">
+    <div style="padding:0 12px"><h2>Every trade</h2><div class="small muted" style="margin:4px 0 8px">Read it like a bank statement</div></div>
+    <div class="table-wrap" style="max-height:640px;overflow-y:auto"><table>
+      <tr><th>Date</th><th>Description</th><th class="r">Amount</th><th class="r">Fee</th><th class="r">Cash after</th></tr>
+      {% for r in statement %}
+      <tr><td class="small muted" style="white-space:nowrap">{{ r.date }}</td>
+        <td class="small">{% if r.mid %}<a href="{{ url_for('meeting_page', mid=r.mid) }}" style="color:var(--ink)">{{ r.desc }}</a>{% else %}{{ r.desc }}{% endif %}</td>
+        <td class="r num {{ 'up' if r.amount > 0 }}">{{ r.amount|eur(2, True) }}</td>
+        <td class="r num muted">{{ r.fee|eur(2) if r.fee is not none else '—' }}</td>
+        <td class="r num"><b>{{ r.cash|eur(2) }}</b></td></tr>
+      {% endfor %}
+    </table></div>
+  </section>
+</div>
+{% endblock %}
+{% block footer %}Paper money at real prices. Prices: {{ prices_label|lower }}.{% endblock %}

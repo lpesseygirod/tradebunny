@@ -1,6 +1,8 @@
-# anthropic removed — the grid package has no AI at runtime. The separate
-# ledger/ package still imports it; reinstate if you run that side.
-# anthropic>=0.40.0
+# The investment council (src/council) calls Claude. The grid has no AI.
+anthropic>=1.4.0
+pydantic>=2.6
+# Council prices and forward P/E (Yahoo Finance, no key).
+yfinance>=1.0
 numpy>=1.26.0
 statsmodels>=0.14.0
 requests>=2.32.0

@@ -1,0 +1,153 @@
+# TradeBunny investment council: the mandate.
+#
+# This file is the rulebook. The risk engine enforces every number in
+# `limits` in plain code; no agent can loosen them. Only the principal (you)
+# edits this file, at the quarterly review. `council init` copies it to
+# data/council/mandate.yaml, which git ignores: edit that copy.
+#
+# Sources: the TraderBunny Investment Committee Report (23 Sep 2026), the
+# Full Review (2 Oct 2026) for the model portfolio, and the Supply Chain
+# Market Review (6 Oct 2026) for grades and triggers. Not financial advice.
+
+name: TradeBunny council
+base_currency: EUR
+start_capital_eur: 10000
+setting: conservative          # conservative | growth
+benchmark: IWDA.AS             # MSCI World in euros: the bar to beat
+fee_per_order_eur: 1.0         # Trade Republic flat fee
+
+limits:
+  min_position: 0.03           # no position below 3%
+  max_position: 0.05           # 6 Oct review: no single share above ~5%
+  max_single_stocks: 10        # adding an 11th means selling one first
+  taiwan_cap: 0.04             # TSMC never above 4%, whatever its price does
+  ai_cap:                      # AI-sensitive single stocks, share of the total
+    conservative: 0.20
+    growth: 0.25
+  min_cash: 0.03
+  cash_target:                 # what is left after instruments and cash is the
+    conservative: 0.05         # watch-list reserve (7% conservative, 8% growth)
+    growth: 0.03
+  rebalance_band: 0.05         # rebalance a bucket only past 5 points of drift
+  tranches: 3                  # limit orders in three equal parts
+  tranche_spacing_days: 30
+  max_meetings_per_month: 4    # idea meetings, to stop overtrading
+  max_loss: 0.20               # if hit: move 10 points from stocks to euro bonds
+  meeting_budget_usd: 3.0      # stop a meeting that costs more than this
+  watchlist_deadline: "2027-03-31"   # unused reserve moves to the index ETFs
+
+# The model portfolio. Weights are the 2 Oct Full Review's two settings.
+# bucket: index | bonds | gold | stock. Reserve and cash are not instruments.
+instruments:
+  - {ticker: IWDA.AS, name: MSCI World ETF, theme: world index, bucket: index, weights: {conservative: 0.20, growth: 0.24}}
+  - {ticker: EXSA.DE, name: STOXX Europe 600 ETF, theme: Europe index, bucket: index, weights: {conservative: 0.12, growth: 0.19}}
+  - {ticker: IBGS.AS, name: Euro government bonds 1-3y, theme: short euro bonds, bucket: bonds, weights: {conservative: 0.15, growth: 0.08}}
+  - {ticker: 4GLD.DE, name: Xetra-Gold, theme: gold, bucket: gold, weights: {conservative: 0.04, growth: 0.03}}
+  - ticker: CME
+    name: CME Group
+    theme: derivatives exchange
+    bucket: stock
+    weights: {conservative: 0.05, growth: 0.05}
+    thesis: The exchange where rate and commodity risk is hedged; volatility is its revenue.
+    breakers: [A long calm period cuts volumes, A clearing competitor emerges]
+  - ticker: PRY.MI
+    name: Prysmian
+    theme: grid cables
+    bucket: stock
+    ai: true
+    weights: {conservative: 0.05, growth: 0.05}
+    grade: B
+    thesis: One of few makers of high-voltage cables that grids and data centres need.
+    trigger: Results keep guidance and fund Atkore without a large share sale; no adds above ~25x forward.
+    breakers: [Guidance is cut, Transmission backlog shrinks two quarters in a row]
+  - ticker: VMC
+    name: Vulcan Materials
+    theme: crushed stone
+    bucket: stock
+    ai: true
+    weights: {conservative: 0.04, growth: 0.04}
+    thesis: Local aggregates monopolies; every data centre and road needs crushed stone nearby.
+    breakers: [Aggregates pricing growth turns negative, The federal infrastructure law is not renewed]
+  - ticker: MET
+    name: MetLife
+    theme: life insurance
+    bucket: stock
+    weights: {conservative: 0.04, growth: 0.0}
+    thesis: Cheap insurer that earns more while rates stay high.
+    breakers: [Fed and ECB pivot to fast rate cuts]
+  - ticker: ALV.DE
+    name: Allianz
+    theme: insurance
+    bucket: stock
+    weights: {conservative: 0.04, growth: 0.04}
+    thesis: European insurer, cheap, euro-denominated, benefits from higher rates.
+    breakers: [ECB pivots to fast rate cuts]
+  - ticker: 2802.T
+    name: Ajinomoto
+    theme: chip film
+    bucket: stock
+    ai: true
+    weights: {conservative: 0.03, growth: 0.04}
+    grade: B
+    thesis: Over 95% of the ABF film inside every advanced chip package.
+    trigger: Hold small; add only if results show the ~30% film price rise in profit.
+    breakers: [A second supplier qualifies ABF for AI chip packages, Glass substrates arrive early]
+  - ticker: ASML.AS
+    name: ASML
+    theme: chip machines
+    bucket: stock
+    ai: true
+    weights: {conservative: 0.03, growth: 0.03}
+    grade: B
+    thesis: The only maker of EUV lithography machines.
+    trigger: Buy near EUR 1,450, about 28x the 2027 profit forecast.
+    entry_price_eur: 1450
+    breakers: [Orders fall below sales, New export bans hit its largest customers]
+  - ticker: TSM
+    name: TSMC
+    theme: chips
+    bucket: stock
+    ai: true
+    taiwan: true
+    weights: {conservative: 0.03, growth: 0.04}
+    grade: A
+    thesis: Makes about 72% of the world's contract chips, including every leading AI chip.
+    trigger: Buy in stages.
+    breakers: [Monthly revenue growth below 20% two months running, Military escalation or a quarantine around Taiwan]
+  - ticker: DEMANT.CO
+    name: Demant
+    theme: hearing aids
+    bucket: stock
+    weights: {conservative: 0.03, growth: 0.03}
+    thesis: Hearing aids for an ageing Europe; a concentrated, slow-to-switch market.
+    breakers: [Price war from over-the-counter hearing aids]
+  - ticker: KNEBV.HE
+    name: KONE
+    theme: elevators
+    bucket: stock
+    weights: {conservative: 0.03, growth: 0.03}
+    thesis: Elevator maintenance contracts, a recurring service business.
+    breakers: [Profit warning tied to the merger]
+
+# Watch list: names the committee wants, at a price or after an event.
+# trigger_pe = buy if forward P/E is at or below; trigger_price_eur likewise.
+watchlist:
+  - {ticker: HWM, name: Howmet Aerospace, theme: turbine blades, grade: B, trigger_pe: 30, thesis: "Single-crystal turbine blades with few qualified makers."}
+  - {ticker: WM, name: Waste Management, theme: landfills, grade: B, trigger_pe: 23, thesis: "Landfills nobody can build again."}
+  - {ticker: AI.PA, name: Air Liquide, theme: industrial gases, grade: B, trigger_pe: 20, trigger_price_eur: 160, thesis: "Industrial gases on long contracts, including chip fabs."}
+  - {ticker: COHR, name: Coherent, theme: AI lasers, grade: C, event: Results confirm tight indium phosphide supply into 2027., thesis: "Lasers for AI optics."}
+  - {ticker: CCJ, name: Cameco, theme: nuclear fuel, grade: B, event: The Westinghouse filing shows the price range and the US government claim., thesis: "Uranium and 49% of Westinghouse."}
+  - {ticker: 4063.T, name: Shin-Etsu Chemical, theme: silicon wafers, grade: B, event: Higher wafer prices show up in profit., thesis: "One of five firms making over 90% of silicon wafers."}
+  - {ticker: ENR.DE, name: Siemens Energy, theme: grid equipment, grade: B, event: Cash flow plus a firm 2027 outlook., thesis: "Grid equipment and turbines with a EUR 162bn order book."}
+  - {ticker: CMI, name: Cummins, theme: backup power, grade: B, event: Power-unit growth within guidance., thesis: "Backup generators for data centres, sold out into 2028."}
+  - {ticker: SPGI, name: S&P Global, theme: credit ratings, grade: B, event: Results confirm ratings revenue., thesis: "Credit ratings duopoly, below its own average multiple."}
+  - {ticker: XYL, name: Xylem, theme: water, grade: B, event: 2-3% growth as guided., thesis: "Water infrastructure, far below its own average multiple."}
+  - {ticker: EL.PA, name: EssilorLuxottica, theme: eyewear, grade: C, event: Leadership dispute resolved., thesis: "Dominant in lenses and frames, cheap against its history."}
+  - {ticker: IFX.DE, name: Infineon, theme: power chips, grade: C, trigger_pe: 25, thesis: "Power chips for cars, data centres and robots."}
+  - {ticker: SU.PA, name: Schneider Electric, theme: electrical gear, grade: not_graded, thesis: "Data-centre electrical equipment; busy with a large acquisition."}
+
+# Names the committee rejected, kept so the gate can explain why.
+rejected:
+  - {ticker: SHA0.DE, name: Schaeffler, reason: "Robots are under 1% of sales and cash flow is negative (grade D)."}
+  - {ticker: NVDA, name: Nvidia, reason: "A customer of the chokepoints, not one."}
+  - {ticker: TSLA, name: Tesla, reason: "A bet on a winner, not a supplier; about 205x earnings."}

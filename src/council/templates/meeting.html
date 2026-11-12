@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · meeting #{{ mt.id }}{% endblock %}
+{% block content %}
+<div class="crumb"><a href="{{ url_for('meetings') }}">Meetings</a> › #{{ mt.id }} {{ title }}</div>
+<div class="page-head" style="margin-bottom:18px">
+  <div>
+    <h1>{{ title }}</h1>
+    <p class="small" style="font-size:.95rem">{{ subtitle }} · Meeting #{{ mt.id }} · {{ when }}
+      · {{ 'holding review' if mt.kind == 'holding' else 'idea meeting' }}</p>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    {% if verdict %}<a class="pill dark" href="#verdict">Grade {{ verdict.d.grade if verdict.d.grade != 'not_graded' else '–' }} · {{ verdict.label }} · jump to verdict ↓</a>{% endif %}
+    <span class="pill outline" id="cost">AI cost ${{ '%.2f'|format(mt.cost_usd or 0) }} of ${{ '%g'|format(mandate.limits.meeting_budget_usd) }} cap</span>
+  </div>
+</div>
+<div id="debate">{% include "_debate.html" %}</div>
+{% endblock %}
+{% block footer %}Members may only quote numbers from the data layer, each stamped with source and time.{% endblock %}
+{% block scripts %}
+{% if mt.status == 'running' %}
+<script>
+(function poll() {
+  fetch("{{ url_for('meeting_live', mid=mt.id) }}").then(r => r.json()).then(d => {
+    if (d.status !== "running") { location.reload(); return; }
+    document.getElementById("debate").innerHTML = d.html;
+    document.getElementById("cost").textContent = "AI cost $" + (d.cost || 0).toFixed(2) + " of ${{ '%g'|format(mandate.limits.meeting_budget_usd) }} cap";
+    setTimeout(poll, 2000);
+  }).catch(() => setTimeout(poll, 4000));
+})();
+</script>
+{% endif %}
+{% endblock %}

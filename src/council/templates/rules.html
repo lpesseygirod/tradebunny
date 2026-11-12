@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Rules · TradeBunny{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>What can't happen?</h1>
+    <p>Your mandate. Only you change it. The risk engine checks every rule before any order.</p>
+  </div>
+  <div style="text-align:right;max-width:340px;margin-left:auto">
+    <span class="code-pill">{{ info.file }}</span>
+    <div class="tiny muted" style="margin-top:8px">{% if info.own %}Last edited by you · {{ info.edited }}{% else %}Example rules: <code>council init</code> makes them yours{% endif %} · checked live {{ checked }}</div>
+  </div>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>Limits</h2>
+    <span class="small muted">{{ ok }} of {{ rows|length }} comfortable{% if close %} · {{ close }} close{% endif %}{% if over %} · {{ over }} over{% endif %}</span></div>
+  {% for r in rows %}
+  <div class="limit">
+    <div><b>{{ r.name }}</b><span class="small muted">{{ r.sub }}</span></div>
+    <div class="rule">{{ r.rule }}</div>
+    <div class="bar"><div class="track" style="margin:0 0 6px"><i class="{{ 'amber' if r.status == 'close' else ('red' if r.status == 'over' else '') }}" style="width:{{ r.fill * 100 }}%"></i></div>
+      <span class="small"><b>{{ r.now }}</b></span></div>
+    <div><span class="pill {{ r.status }}">{{ {'ok':'OK','close':'Close','over':'Over'}[r.status] }}</span></div>
+  </div>
+  {% endfor %}
+</section>
+
+<div class="grid g-rules mt">
+  <section class="card">
+    <h2>Thesis breakers</h2>
+    <div class="small muted" style="margin:4px 0 8px">If one comes true, a holding review sells or trims. A price drop alone never sells.</div>
+    <div class="table-wrap"><table>
+      {% for i in mandate.instruments if i.breakers %}
+      <tr><td style="width:140px"><b>{{ i.name }}</b></td><td class="small">{{ i.breakers|join('; ') }}.</td>
+        <td class="r" style="white-space:nowrap">{% if flagged.get(i.ticker) %}<a class="pill sell" href="{{ url_for('meeting_page', mid=flagged[i.ticker]) }}">Flagged · #{{ flagged[i.ticker] }}</a>
+          {% else %}<span class="small up" style="font-weight:600">Not triggered</span>{% endif %}</td></tr>
+      {% endfor %}
+    </table></div>
+  </section>
+  <div class="stack">
+    <section class="card">
+      <h2 style="margin-bottom:8px">Model portfolio</h2>
+      <ul class="rows">
+        {% for i in mandate.instruments if i.weights.get(mandate.setting) > 0 %}
+        <li><b class="grow">{{ i.name }}</b><span class="small">{{ i.weights.get(mandate.setting)|pct(0) }} target</span></li>
+        {% endfor %}
+        <li><span class="grow">Watch-list reserve</span><span class="small">{{ mandate.reserve_target()|pct(0) }} until {{ lim.watchlist_deadline|day }}</span></li>
+      </ul>
+      <p class="small muted">{{ mandate.setting|capitalize }} setting. Anything not listed must pass the gate and a meeting first.</p>
+    </section>
+    <section class="card">
+      <h2 style="margin-bottom:8px">Rejected names</h2>
+      <ul class="rows">
+        {% for r in mandate.rejected %}
+        <li style="align-items:flex-start"><span class="grade D">D</span><div class="grow"><b>{{ r.name }}</b><div class="small muted">{{ r.reason }}</div></div></li>
+        {% endfor %}
+      </ul>
+    </section>
+    <section class="card dashed">
+      <div class="eyebrow">Chapter one</div>
+      <p style="margin-top:8px">The crypto grid bot: built, tested, and retired by its own rule. Still in the repo.</p>
+    </section>
+  </div>
+</div>
+{% endblock %}
+{% block footer %}The AI can argue about anything. It can't change a line on this page.{% endblock %}

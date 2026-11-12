@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Money · TradeBunny{% endblock %}
+{% block content %}
+<div class="grid g-hero">
+  <section class="card">
+    <div class="hero-top">
+      <div>
+        <div class="eyebrow">Paper portfolio · since {{ v.started }}</div>
+        <div class="value num">{{ v.value|eur(2) }}</div>
+        <div class="{{ 'up' if v.gain_eur >= 0 else 'down' }}" style="font-weight:700;font-size:1.05rem">
+          {{ v.gain_eur|arrow }} {{ v.gain_eur|abs|eur(2) }} ({{ v.gain|pct(2, True) }})
+          <span class="muted" style="font-weight:500">after {{ v.fees|eur(0) }} in fees</span></div>
+      </div>
+      <div style="text-align:right">
+        <div class="behind {{ 'ahead' if v.edge_pts >= 0 }}">{{ '▲' if v.edge_pts >= 0 else '▼' }}
+          {{ '%.2f'|format(v.edge_pts|abs) }} pts {{ 'ahead of' if v.edge_pts >= 0 else 'behind' }} the index</div>
+        <div class="muted small" style="margin-top:8px">Same {{ v.capital|eur }} in MSCI World:
+          <b style="color:var(--ink)">{{ v.bench|eur(2) }}</b> ({{ v.bench_gain|pct(2, True) }})</div>
+      </div>
+    </div>
+    <div class="legend"><span><i></i>Council portfolio</span><span><i class="dash"></i>MSCI World, same {{ v.capital|eur }}</span>
+      <span class="sp"></span>{% if v.chart %}<span>Daily close · {{ v.chart.span }}</span>{% endif %}</div>
+    {% if v.chart %}
+      <svg class="chart" viewBox="0 0 {{ v.chart.w }} {{ v.chart.h }}" preserveAspectRatio="none" role="img"
+           aria-label="Council portfolio against the MSCI World ETF, daily">
+        {% for y in v.chart.grid %}<line x1="0" x2="{{ v.chart.w }}" y1="{{ y }}" y2="{{ y }}" stroke="var(--line)" stroke-width="1"/>{% endfor %}
+        <path d="{{ v.chart.bm }}" fill="none" stroke="var(--muted)" stroke-width="1.6" stroke-dasharray="6 5" vector-effect="non-scaling-stroke"/>
+        <path d="{{ v.chart.pf }}" fill="none" stroke="var(--accent)" stroke-width="2.6" vector-effect="non-scaling-stroke"/>
+      </svg>
+      <div class="xlabels">{% for l in v.chart.labels %}<span>{{ l }}</span>{% endfor %}</div>
+    {% else %}
+      <div class="callout muted" style="margin:16px 0">The chart draws one point per day. Run the daily review each day
+        (or schedule <code>council review</code>) and the council's line and the index's line appear here.</div>
+    {% endif %}
+    <div class="callout">Why {{ v.why_word }}: {{ v.why|safe }}</div>
+  </section>
+
+  <section class="card">
+    <div class="eyebrow">Convene the council</div>
+    <h2 style="font-size:1.55rem;margin-top:10px">Which stock should they debate?</h2>
+    <form method="post" action="{{ url_for('convene') }}" id="convene">
+      <label class="field" for="ticker">Ticker or company</label>
+      <input type="text" id="ticker" name="ticker" list="universe" placeholder="e.g. ASML" autocomplete="off">
+      <datalist id="universe">{% for t, n in names %}<option value="{{ t }}">{{ n }}</option>{% endfor %}</datalist>
+      {% if v.chips %}<div class="small muted" style="margin-top:14px">From your watch list</div>
+      <div class="chips">{% for c in v.chips %}<button type="button" class="chip" data-t="{{ c.ticker }}">{{ c.name }}</button>{% endfor %}</div>{% endif %}
+      <button class="btn accent">Convene the council</button>
+    </form>
+    <ul class="notes">
+      <li><i class="amber"></i><span><b style="color:var(--ink)">{{ v.slots.left }} of {{ v.slots.cap }}</b> idea meeting slots left in {{ v.slots.month }}</span></li>
+      <li><i class="green"></i><span>Gate checks the name is allowed before anyone writes</span></li>
+      <li><i></i><span>AI cost capped at ${{ '%g'|format(mandate.limits.meeting_budget_usd) }} a meeting{% if backend_name != 'claude' %}; scripted members cost nothing{% endif %}</span></li>
+    </ul>
+    <form method="post" action="{{ url_for('review') }}" style="margin-top:18px">
+      <button class="btn light" style="width:100%">Run today's review</button></form>
+  </section>
+</div>
+
+<div class="grid g2 mt">
+  <section class="card">
+    <div class="card-head"><h2>Recent decisions</h2><a class="link" href="{{ url_for('meetings') }}">All meetings →</a></div>
+    {% if not v.decisions %}<p class="muted">No meetings yet. Name a stock above and convene the council.</p>{% endif %}
+    <ul class="rows">
+      {% for r in v.decisions %}
+      <li>
+        <span class="grade {{ r.grade }}">{{ r.grade if r.grade in ('A','B','C','D') else '–' }}</span>
+        <div class="grow"><a href="{{ url_for('meeting_page', mid=r.id) }}" style="color:var(--ink);text-decoration:none"><b>{{ r.name }}</b></a>
+          <span class="muted small">· #{{ r.id }} · {{ r.date }}</span>
+          <div class="small muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.sub }}</div></div>
+        <span class="pill {{ r.cls }}">{{ r.label }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>Rules, checked live</h2><a class="link" href="{{ url_for('rules') }}">All rules →</a></div>
+    {% for x in v.meters %}
+    <div class="meter">
+      <div class="top"><b>{{ x.name }}</b><span><b>{{ x.now }}</b> <span class="muted">/ {{ x.limit }}</span></span></div>
+      <div class="track"><i class="{{ x.cls }}" style="width:{{ [x.fill * 100, 100]|min }}%"></i></div>
+      <div class="tiny muted">{{ x.sub }}</div>
+    </div>
+    {% endfor %}
+  </section>
+</div>
+
+<div class="grid g2 mt">
+  <section class="card">
+    <h2>Watch list</h2>
+    <div class="small muted" style="margin:4px 0 6px">Waiting for a buy trigger</div>
+    <ul class="rows">
+      {% for w in v.watch %}
+      <li><div class="grow"><b>{{ w.name }}</b><div class="small muted">{{ w.line }}</div></div>
+        <span class="pill {{ w.status }}">{{ STATUS_LABEL[w.status] }}</span></li>
+      {% endfor %}
+    </ul>
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>Largest positions</h2><a class="link" href="{{ url_for('portfolio_page') }}">Portfolio →</a></div>
+    <ul class="rows">
+      {% for p in v.positions %}
+      <li><b class="grow">{{ p.name }}</b>
+        <span class="small muted num">{{ p.weight|pct(2) }}{% if p.target %} of {{ p.target|pct(0) }}{% endif %}</span>
+        <span class="num {{ 'up' if p.gain_pct > 0 else ('down' if p.gain_pct < 0 else 'muted') }}" style="width:70px;text-align:right;font-weight:700">
+          {{ p.gain_pct|arrow }} {{ (p.gain_pct|abs)|pct }}</span></li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => {
+  document.getElementById("ticker").value = b.dataset.t;
+  document.getElementById("ticker").focus();
+}));
+</script>
+{% endblock %}
