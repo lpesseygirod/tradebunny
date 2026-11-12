@@ -36,6 +36,7 @@ while it is down is the stop — hence the warning, not a fire sale.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import signal
@@ -497,7 +498,11 @@ def cmd_resume(args) -> int:
 
 def cmd_backtest(args) -> int:
     """Fit a grid on recent candles and replay it, in-sample and out."""
-    if args.deep:
+    if args.candles:
+        candles = json.loads(Path(args.candles).read_text())["candles"]
+        if not args.deep:
+            candles = candles[-300:]
+    elif args.deep:
         import time as _t
         start = _t.time() * 1000 - args.years * 365 * 24 * 3600 * 1000
         candles = okx.get_history(args.symbol, args.bar, start_ts=start,
@@ -809,6 +814,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="use get_history for years of data, not the 300-bar "
                         "recent window")
     s.add_argument("--years", type=float, default=2.0)
+    s.add_argument("--candles", metavar="FILE",
+                   help="replay candles from a saved JSON file instead of "
+                        "calling OKX (offline; see examples/)")
     s.set_defaults(fn=cmd_backtest)
 
     s = sub.add_parser("grid", help="every transaction on one grid")

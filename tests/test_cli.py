@@ -723,3 +723,19 @@ def test_short_window_warning_tracks_the_configured_statistics_window():
     assert _cli.window_warning(int(_an.STATISTICS_DAYS * 24), "1H") == ""
     # A genuinely truncated one still must.
     assert "SHORT DATA WINDOW" in _cli.window_warning(300, "1H")
+
+
+def test_backtest_replays_a_saved_candle_file_without_the_network(monkeypatch, capsys):
+    from pathlib import Path
+
+    def no_network(*a, **k):
+        raise AssertionError("backtest --candles must not call OKX")
+
+    monkeypatch.setattr(cli.okx, "get_candles", no_network)
+    monkeypatch.setattr(cli.okx, "get_history", no_network)
+    sample = Path(__file__).resolve().parents[1] / "examples" / "candles" / "ETH-USDT_1H.json"
+    code = main(["backtest", "ETH-USDT", "--candles", str(sample)])
+    out = capsys.readouterr().out
+    assert "data window: 300 bars" in out
+    assert "ETH-USDT:" in out
+    assert code in (0, 1)
