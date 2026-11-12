@@ -50,7 +50,7 @@ def validate(
     max_magnitude: float = 15.0,
     max_source_age_hours: int = 72,
 ) -> Verdict:
-    """Check one AI-generated candidate against every rule in CLAUDE.md."""
+    """Check one AI-generated candidate against every rule in docs/LEDGER.md."""
     now = now or datetime.now(timezone.utc)
     v = Verdict(ok=True)
 

@@ -1,5 +1,5 @@
 # Prediction Ledger configuration.
-# Everything restrictive here is deliberate — see CLAUDE.md before loosening it.
+# Everything restrictive here is deliberate — see docs/LEDGER.md before loosening it.
 
 ledger_path: data/ledger.db
 
