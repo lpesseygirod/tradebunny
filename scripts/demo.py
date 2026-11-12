@@ -72,15 +72,15 @@ class ReplaySource:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Offline Grid Pilot demo")
+    ap = argparse.ArgumentParser(description="Offline TradeBunny demo")
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--capital", type=float, default=500.0)
     args = ap.parse_args()
 
-    home = Path(tempfile.mkdtemp(prefix="gridpilot-demo-"))
+    home = Path(tempfile.mkdtemp(prefix="tradebunny-demo-"))
     shutil.copy(ROOT / "config.yaml", home / "config.yaml")
     (home / "data" / "plans").mkdir(parents=True)
-    os.environ["LEDGER_HOME"] = str(home)          # before any grid import
+    os.environ["TRADEBUNNY_HOME"] = str(home)          # before any grid import
     os.environ.setdefault("GRID_WEB_TOKEN", "demo")
     sys.path.insert(0, str(ROOT / "src"))
 

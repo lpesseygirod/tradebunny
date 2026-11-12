@@ -1,4 +1,4 @@
-# Prediction Ledger — rules and design
+# The news-prediction journal (`src/ledger/`) — rules and design
 
 The older half of this repo: a prediction journal that tests whether reasoning about
 the news has any edge before money is involved. Many parts are restrictive on purpose;
@@ -6,7 +6,7 @@ this document explains why.
 
 ## Two systems live here
 
-- **`src/grid/` — Grid Pilot.** A spot grid-trading system. **It contains NO AI at
+- **`src/grid/` — the grid trader.** A spot grid-trading system. **It contains NO AI at
   runtime**: every parameter is measured by `metrics.py`, gated by `rubric.py`, and
   the approval note is a template. No API key is required to run it. Its rules are
   documented in `README.md`, and `rubric.ANALYST_BRIEF` is kept as documentation of
@@ -15,7 +15,7 @@ this document explains why.
 - **`src/ledger/` — the prediction journal** described below. This one still has a
   model call (`ledger/reason.py`) and needs `ANTHROPIC_API_KEY`. It never trades.
 
-The rules below govern the LEDGER. Grid Pilot's rules are in `README.md`.
+The rules below govern the LEDGER. The grid trader's rules are in `README.md`.
 
 ## What this is
 

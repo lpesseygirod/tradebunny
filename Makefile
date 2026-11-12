@@ -1,4 +1,4 @@
-# Grid Pilot / Prediction Ledger
+# TradeBunny
 #
 # `make check` is the one to run before trusting anything: the whole test suite,
 # then a LIVE call to OKX's public endpoints. The tests are hermetic by design —

@@ -144,7 +144,7 @@ class TestStartup:
 class TestThePage:
 
     def test_it_renders(self, client):
-        assert b"Grid Pilot" in client.get(f"/?token={TOKEN}").data
+        assert b"TradeBunny" in client.get(f"/?token={TOKEN}").data
 
     def test_an_empty_day_says_so_rather_than_looking_broken(self, client):
         assert b"correct outcome" in client.get(f"/?token={TOKEN}").data

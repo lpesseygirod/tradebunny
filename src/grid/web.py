@@ -56,7 +56,7 @@ from .executor import HEARTBEAT_PATH, STATE_DIR, load_heartbeat, load_state
 from .fees import FeeModel
 from .plan import GridPlan, Status, load_all
 
-PLANS_DIR = Path(os.getenv("LEDGER_HOME", ".")).resolve() / "data" / "plans"
+PLANS_DIR = Path(os.getenv("TRADEBUNNY_HOME", ".")).resolve() / "data" / "plans"
 
 #: Capital levels the paper grids are tracked against. Switching between them
 #: re-derives every figure from the SAME fills, so you can see what a given
@@ -191,7 +191,7 @@ class ScanRunner:
                 lines = "\n".join(
                     f"• {p.symbol}  {p.lower:.6g}–{p.upper:.6g}  {p.levels} levels"
                     for p in plans)
-                self.notify(f"📋 Grid Pilot: {len(plans)} proposal(s) awaiting "
+                self.notify(f"📋 TradeBunny: {len(plans)} proposal(s) awaiting "
                             f"approval\n\n{lines}")
             with self.lock:
                 self.state.proposed = [p.symbol for p in plans]
@@ -805,8 +805,8 @@ def _page(*, control: Control, runner: ScanRunner, token: str,
     body = [f"""<!doctype html><html><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Grid Pilot</title><style>{CSS}</style></head><body>
-<header><h1>Grid Pilot <span class="{mode_cls}">{_esc(mode)}</span>
+<title>TradeBunny</title><style>{CSS}</style></head><body>
+<header><h1>TradeBunny <span class="{mode_cls}">{_esc(mode)}</span>
 <span class="count" id="unread"
   style="{'' if payload['unread'] else 'display:none'}">{payload['unread'] or ''}</span></h1>
 <p id="status" class="muted">{_esc(scan['label'])}</p>
@@ -1045,7 +1045,7 @@ def _grid_page(plan: GridPlan, db, token: str, state_dir: Path,
     return f"""<!doctype html><html><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>{_esc(plan.symbol)} · Grid Pilot</title><style>{CSS}</style></head><body>
+<title>{_esc(plan.symbol)} · TradeBunny</title><style>{CSS}</style></head><body>
 <header>
   <h1><a class="card-link" href="/?token={_esc(token)}">&larr;</a>
     {_esc(plan.symbol)}</h1>
@@ -1327,7 +1327,7 @@ def _resize(plan: GridPlan, amount: float, control: Control,
 def main() -> None:
     port = int(os.getenv("GRID_WEB_PORT", "8080"))
     app = create_app()
-    print(f"Grid Pilot on http://0.0.0.0:{port}/?token="
+    print(f"TradeBunny on http://0.0.0.0:{port}/?token="
           f"{app.config['TOKEN']}", flush=True)
     app.run(host="0.0.0.0", port=port, threaded=True)
 

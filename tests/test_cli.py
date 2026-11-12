@@ -27,6 +27,7 @@ SYMBOL = "AAA-USDT"
 def control(tmp_path):
     c = Control(tmp_path / "control.json")
     c.initialise()
+    c.set_caps(max_total_quote=1300.0)      # make_plan commits 1300 per grid
     return c
 
 
@@ -614,7 +615,7 @@ class TestServiceCommand:
         import plistlib
         main(["service", "print"])
         out = capsys.readouterr().out
-        assert plistlib.loads(out.encode())["Label"] == "com.gridpilot.executor"
+        assert plistlib.loads(out.encode())["Label"] == "com.tradebunny.executor"
 
     def test_status_reports_without_touching_launchd_state(self, capsys):
         code = main(["service", "status"])
@@ -751,3 +752,104 @@ def test_drift_check_runs_on_a_machine_that_just_booted(control, dirs, monkeypat
     run_loop(control, exchange=PaperExchange(dirs["state_dir"] / "paper.json", quote=1000.0),
              interval=0.0, max_passes=2, sleep=lambda s: None, notify=lambda m: None, **dirs)
     assert calls == [1]
+
+
+# ------------------------------------------------- paper trading, end to end
+
+class TestPaperTradingEndToEnd:
+    """The real loop, from an approved plan to recorded fills, with nothing
+    set by hand on the paper exchange: no set_price, no credit, no advance_to.
+    Before the price feed existed, every pass failed with "no paper price set".
+    """
+
+    @staticmethod
+    def feed(*prices):
+        """A stand-in for OKX: one last price per pass, then the last forever."""
+        seq = list(prices)
+        def prices_now():
+            p = seq.pop(0) if len(seq) > 1 else seq[0]
+            return {SYMBOL: p}
+        return prices_now
+
+    def run(self, control, dirs, tmp_path, prices, passes, **kw):
+        from grid import store as gridstore
+        ex = PaperExchange(tmp_path / "paper.json")       # empty: no price, no money
+        db = gridstore.Store(tmp_path / "grid.db")
+        sent = []
+        beat = run_loop(control, exchange=ex, interval=0.0, max_passes=passes,
+                        sleep=lambda s: None, notify=sent.append,
+                        drift_interval=0, paper_prices=prices, store=db,
+                        **dirs, **kw)
+        return ex, db, beat, sent
+
+    def test_an_approved_plan_trades_on_paper(self, control, dirs, tmp_path):
+        plan = make_plan(dirs["plans_dir"])
+        ex, db, beat, _ = self.run(control, dirs, tmp_path,
+                                   self.feed(100.0, 97.5, 99.5), passes=3)
+
+        assert beat.last_error == ""
+        sides = {f["side"] for f in ex.fills}
+        assert sides == {"buy", "sell"}                  # bought the dip, sold the bounce
+        assert len(db.transactions(plan_id=plan.id, limit=0)) == len(ex.fills)
+        reloaded = [p for p in live_plans(dirs["plans_dir"]) if p.id == plan.id]
+        assert reloaded and reloaded[0].status is Status.RUNNING
+
+    def test_each_plan_is_funded_once_with_its_approved_amount(self, control, dirs, tmp_path):
+        make_plan(dirs["plans_dir"])
+        ex, *_ = self.run(control, dirs, tmp_path, self.feed(100.0), passes=2)
+        assert ex.fetch_balance(SYMBOL).quote == pytest.approx(1300.0)
+
+        # a restart reads the same file and must not fund it again
+        ex2, *_ = self.run(control, dirs, tmp_path, self.feed(100.0), passes=1)
+        assert ex2.fetch_balance(SYMBOL).quote == pytest.approx(1300.0)
+
+    def test_no_market_price_skips_the_plan_and_says_so(self, control, dirs, tmp_path):
+        make_plan(dirs["plans_dir"])
+
+        def down():
+            raise ConnectionError("OKX unreachable")
+
+        ex, _, beat, sent = self.run(control, dirs, tmp_path, down, passes=1)
+        assert ex.fetch_open_orders(SYMBOL) == []
+        assert "OKX unreachable" in beat.last_error
+        assert any(SYMBOL in m for m in sent)
+
+    def test_the_stop_uses_the_real_price(self, control, dirs, tmp_path):
+        plan = make_plan(dirs["plans_dir"])
+        ex, *_ = self.run(control, dirs, tmp_path,
+                          self.feed(100.0, 97.5, 89.0), passes=3)
+        assert ex.market_sells                           # stopped out at 89 < 90
+        assert [p for p in live_plans(dirs["plans_dir"]) if p.id == plan.id] == []
+
+
+# ----------------------------------------------------- caps in control.json
+
+class TestCaps:
+    """`max_concurrent_grids` and `max_total_quote` are enforced by the loop,
+    not only shown in the app."""
+
+    def test_a_grid_over_the_per_grid_cap_places_nothing(self, control, ex, dirs):
+        control.set_caps(max_total_quote=500.0)
+        make_plan(dirs["plans_dir"])                     # commits 1300
+        sent = []
+        loop(control, ex, dirs, passes=2, notify=sent.append, drift_interval=0)
+        assert ex.fetch_open_orders(SYMBOL) == []
+        assert sum("per-grid cap" in m for m in sent) == 1   # announced once
+
+    def test_only_max_concurrent_grids_run(self, control, ex, dirs):
+        control.set_caps(max_concurrent_grids=1)
+        make_plan(dirs["plans_dir"], symbol="AAA-USDT")
+        make_plan(dirs["plans_dir"], symbol="BBB-USDT")
+        ex.set_price("BBB-USDT", 100.0)
+        loop(control, ex, dirs, notify=lambda m: None, drift_interval=0)
+        running = [s for s in ("AAA-USDT", "BBB-USDT") if ex.fetch_open_orders(s)]
+        assert len(running) == 1
+
+    def test_lowering_a_cap_holds_a_running_grid_without_selling(self, control, ex, dirs):
+        make_plan(dirs["plans_dir"])
+        loop(control, ex, dirs, drift_interval=0)
+        assert ex.fetch_open_orders(SYMBOL)
+        control.set_caps(max_total_quote=100.0)
+        loop(control, ex, dirs, notify=lambda m: None, drift_interval=0)
+        assert ex.fetch_open_orders(SYMBOL) == []
+        assert ex.market_sells == []

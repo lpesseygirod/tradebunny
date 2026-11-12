@@ -1,9 +1,9 @@
-# Prediction Ledger configuration.
+# TradeBunny configuration.
 # Everything restrictive here is deliberate — see docs/LEDGER.md before loosening it.
 
 ledger_path: data/ledger.db
 
-# --- Grid Pilot -------------------------------------------------------------
+# --- Grid trading -----------------------------------------------------------
 grid:
   # How much confidence a proposal needs before it is shown to you.
   #   strict       >= 0.65   (default)

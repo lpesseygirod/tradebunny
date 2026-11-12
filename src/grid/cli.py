@@ -1,4 +1,4 @@
-"""Grid Pilot's single entry point.
+"""TradeBunny's single entry point.
 
     python -m grid.cli init          create the control file
     python -m grid.cli scan          ask the analyst, once, now
@@ -60,7 +60,7 @@ from .plan import GridPlan, Status, load_all
 
 log = logging.getLogger("grid.cli")
 
-HOME = Path(os.getenv("LEDGER_HOME", ".")).resolve()
+HOME = Path(os.getenv("TRADEBUNNY_HOME", ".")).resolve()
 PLANS_DIR = HOME / "data" / "plans"
 PAPER_PATH = HOME / "data" / "paper.json"
 
@@ -87,6 +87,16 @@ def live_plans(plans_dir: Path = PLANS_DIR) -> list[GridPlan]:
     """Plans the executor should be applying: approved or already running."""
     return [p for p in load_all(plans_dir)
             if p.status in (Status.APPROVED, Status.RUNNING)]
+
+
+def okx_last_prices() -> dict[str, float]:
+    """Last traded price of every OKX spot pair, from public market data.
+
+    The only thing paper trading takes from OKX. No order, balance or fill is
+    ever sent there: the live order client (`executor.LiveExchange`) is not
+    built.
+    """
+    return {sym: t["last"] for sym, t in okx.get_spot_tickers().items()}
 
 
 def check_drift(control: Control, *, plans_dir: Path = PLANS_DIR,
@@ -123,7 +133,9 @@ def run_loop(control: Control, *, exchange=None, plans_dir: Path = PLANS_DIR,
              sleep: Callable[[float], None] = time.sleep,
              notify: Callable[[str], None] = notify,
              drift_interval: float = DRIFT_INTERVAL,
-             drift_source=okx) -> Heartbeat:
+             drift_source=okx,
+             paper_prices: Optional[Callable[[], dict[str, float]]] = None,
+             store=None) -> Heartbeat:
     """Apply every live plan, every `interval` seconds, until told to stop.
 
     Returns the final heartbeat. `max_passes` and `sleep` exist so the tests can
@@ -133,8 +145,19 @@ def run_loop(control: Control, *, exchange=None, plans_dir: Path = PLANS_DIR,
     a transient exchange error on one symbol must not take the stop-loss away
     from every other grid. Anything that escapes the whole pass is recorded on
     the heartbeat and re-raised, so the supervisor can restart and tell you.
+
+    Paper trading: with no `exchange` given, the loop builds the paper exchange
+    itself and feeds it real OKX prices every pass (`sync_paper_market`), and
+    records fills in the app's database. A caller that passes its own exchange
+    (the tests) passes `paper_prices` and `store` explicitly if it wants them.
     """
-    exchange = exchange if exchange is not None else make_exchange(control, PAPER_PATH)
+    if exchange is None:
+        exchange = make_exchange(control, PAPER_PATH)
+        if isinstance(exchange, PaperExchange):
+            if paper_prices is None:
+                paper_prices = okx_last_prices
+            if store is None:
+                store = gridstore.Store()
     beat = Heartbeat(pid=os.getpid(),
                      started_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
     stopping = {"now": False}
@@ -154,6 +177,7 @@ def run_loop(control: Control, *, exchange=None, plans_dir: Path = PLANS_DIR,
             pass          # not the main thread (a test, or an embedded run)
 
     passes = 0
+    was_held: set[str] = set()
     last_drift = None   # None = not run yet. Never compare against 0: time.monotonic()
                         # counts from boot, so a freshly started machine would skip the first check.
     try:
@@ -174,10 +198,27 @@ def run_loop(control: Control, *, exchange=None, plans_dir: Path = PLANS_DIR,
                     beat.last_error = f"drift: {type(e).__name__}: {e}"
 
             beat.plans = [p.symbol for p in plans]
+
+            # The caps in control.json, checked every pass because the file
+            # can change between passes. A newly held grid is announced once.
+            held = executor.admit(plans, control)
+            for plan in plans:
+                if plan.id in held and plan.id not in was_held:
+                    notify(f"⏸ {plan.symbol}: {held[plan.id]}")
+            was_held = set(held)
+
+            no_price: dict[str, str] = {}
+            if paper_prices is not None and isinstance(exchange, PaperExchange):
+                no_price = executor.sync_paper_market(
+                    exchange, plans, paper_prices, store=store, held=held)
+
             for plan in plans:
                 try:
+                    if plan.symbol in no_price:
+                        raise RuntimeError(no_price[plan.symbol])
                     run_once(plan, exchange, control, state_dir=state_dir,
-                             plans_dir=plans_dir, notify=notify)
+                             plans_dir=plans_dir, notify=notify, store=store,
+                             held=held.get(plan.id, ""))
                 except Exception as e:
                     beat.last_error = f"{plan.symbol}: {type(e).__name__}: {e}"
                     log.exception("pass failed for %s", plan.symbol)
@@ -241,7 +282,7 @@ def supervise(argv: Sequence[str], *, notify: Callable[[str], None] = notify,
             return 0
 
         restarts += 1
-        notify(f"🔴 Grid Pilot executor died (exit {code}). "
+        notify(f"🔴 TradeBunny executor died (exit {code}). "
                f"Restarting in {delay:.0f}s. While it is down your grids have "
                f"no stop-loss.")
         log.error("executor exited %s; restart %d in %.0fs", code, restarts, delay)
@@ -341,7 +382,7 @@ def cmd_scan(args) -> int:
     out.write_text(_scan_markdown(report, floor, args))
     print(f"\nwrote {out}")
     if report.error:
-        notify(f"⚠️ Grid Pilot scan failed: {report.error}")
+        notify(f"⚠️ TradeBunny scan failed: {report.error}")
         return 1
     if plans:
         lines = "\n".join(
@@ -349,7 +390,7 @@ def cmd_scan(args) -> int:
             f"stop {p.stop_below:.6g}" for p in plans)
         print("\nAwaiting your approval in the web UI:")
         print(lines)
-        notify(f"📋 Grid Pilot: {len(plans)} proposal(s) awaiting approval\n\n"
+        notify(f"📋 TradeBunny: {len(plans)} proposal(s) awaiting approval\n\n"
                f"{lines}\n\nApprove or reject in the web UI.")
     return 0
 
@@ -681,7 +722,7 @@ def cmd_freshness(args) -> int:
 
     print()
     print("caches on disk")
-    cache_dir = Path(os.getenv("LEDGER_HOME", ".")).resolve() / "data" / "candles"
+    cache_dir = Path(os.getenv("TRADEBUNNY_HOME", ".")).resolve() / "data" / "candles"
     if cache_dir.exists():
         files = sorted(cache_dir.glob("*.json"))
         print(f"  {len(files)} cached candle series in {cache_dir}")

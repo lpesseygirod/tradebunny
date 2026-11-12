@@ -73,7 +73,7 @@ BAR_MS: dict[str, int] = {
     "1D": 86_400_000,
 }
 
-CANDLE_CACHE_DIR = Path(os.getenv("LEDGER_HOME", ".")).resolve() / "data" / "candles"
+CANDLE_CACHE_DIR = Path(os.getenv("TRADEBUNNY_HOME", ".")).resolve() / "data" / "candles"
 
 #: Documented limit for the public market-data endpoints: 20 requests / 2s per IP.
 RATE_LIMIT = 20

@@ -1,6 +1,6 @@
-# Grid Pilot — design notes
+# TradeBunny — design notes
 
-The detailed engineering notes behind TradeBunny (the app itself is called Grid Pilot).
+The detailed engineering notes behind TradeBunny.
 The short version is in the [README](../README.md).
 
 **There is no AI in this system.** Not in the analyst, not in the executor, not
@@ -23,11 +23,11 @@ A spot grid-trading system in two halves that never mix:
   It has **no judgement and no discretion**. It reads parameters and obeys them.
 
 Between them sits you: every proposal needs your approval, with your chosen amount,
-through the Grid Pilot app.
+through the TradeBunny app.
 
 ```
-   OKX candles ──► analyst ──► proposal ──► YOU ──► approved plan ──► executor ──► OKX
-                 (measures)               (decide)                   (obeys)
+   OKX candles ──► analyst ──► proposal ──► YOU ──► approved plan ──► executor ──► paper exchange
+                 (measures)               (decide)                   (obeys)      (live OKX prices)
 ```
 
 ---
@@ -40,13 +40,13 @@ through the Grid Pilot app.
 | `grid/analyst.py` | Scans the universe and proposes grids. Measures, never trades |
 | `grid/backtest.py` | Walk-forward replay: fit on one window, judge on the next |
 | `grid/plan.py`, `fees.py`, `sizing.py` | The plan format, the fee model and worst-case position sizing |
-| `grid/executor.py` | Applies approved plans; paper by default |
+| `grid/executor.py` | Applies approved plans to the paper exchange, which fills at live OKX prices; re-checks the caps in control.json every pass |
 | `grid/control.py` | Three kill switches, fail-closed |
-| `grid/okx.py` | OKX market data and orders (spot, `tdMode="cash"` only) |
+| `grid/okx.py` | OKX public market data and the read-only fee tier. No order code: the live order client (`executor.LiveExchange`) is not built |
 | `grid/web.py` | The approval app |
 | `ledger/` | The earlier news-prediction journal ([LEDGER.md](LEDGER.md)); the grid reuses its notifier and scoring |
 
-**1,272 tests, all offline.** Run `python -m pytest`.
+**1,279 tests, all offline.** Run `python -m pytest`.
 
 ---
 
@@ -56,7 +56,7 @@ through the Grid Pilot app.
    (~11%/yr) and it would eat the grid alive. Enforced in
    `plan.spot_instrument_problems()` via `plan.validate()`, so it is re-checked
    on every executor pass, not just at approval. An id check cannot detect
-   margin — OKX margin shares the spot instrument id — so the live client must
+   margin — OKX margin shares the spot instrument id — so a live client, if one is built, must
    send `tdMode="cash"`.
 2. **Limit orders only.** Maker fee, not taker, and a grid rests orders anyway.
    The executor must never cross the spread.
@@ -155,7 +155,7 @@ running whenever a grid is. A launchd **agent** supervises it.
 
 ```bash
 grid service print       # show the plist without writing anything
-grid service install     # write ~/Library/LaunchAgents/com.gridpilot.executor.plist
+grid service install     # write ~/Library/LaunchAgents/com.tradebunny.executor.plist
 grid service status      # is it installed? loaded? actually running?
 grid service uninstall   # unload and remove
 ```
@@ -164,9 +164,9 @@ grid service uninstall   # unload and remove
 which starts placing orders**, so that is a separate deliberate step:
 
 ```bash
-launchctl load -w ~/Library/LaunchAgents/com.gridpilot.executor.plist
-launchctl unload  ~/Library/LaunchAgents/com.gridpilot.executor.plist
-launchctl list com.gridpilot.executor        # raw launchd view
+launchctl load -w ~/Library/LaunchAgents/com.tradebunny.executor.plist
+launchctl unload  ~/Library/LaunchAgents/com.tradebunny.executor.plist
+launchctl list com.tradebunny.executor        # raw launchd view
 ```
 
 **An agent, not a daemon, on purpose.** A LaunchDaemon runs at boot as root,

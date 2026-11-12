@@ -102,14 +102,14 @@ class TestInstallAndUninstall:
 class TestStatus:
 
     def test_not_installed_is_reported(self, tmp_path):
-        st = service.status(label="com.gridpilot.nope",
+        st = service.status(label="com.tradebunny.nope",
                             path=tmp_path / "absent.plist")
         assert not st.installed and not st.running
         assert "install" in st.explain()
 
     def test_installed_but_unloaded_says_how_to_load(self, tmp_path):
         p = service.install(path=tmp_path / "x.plist", home=tmp_path)
-        st = service.status(label="com.gridpilot.definitely-not-loaded", path=p)
+        st = service.status(label="com.tradebunny.definitely-not-loaded", path=p)
         assert st.installed and not st.loaded
         assert "launchctl load" in st.explain()
 
@@ -134,7 +134,7 @@ class TestStatus:
         assert "KeepAlive restarts this" in st.explain()
 
     def test_it_asks_launchd_and_survives_a_missing_job(self):
-        loaded, fields, err = service._launchctl_list("com.gridpilot.nonexistent")
+        loaded, fields, err = service._launchctl_list("com.tradebunny.nonexistent")
         assert loaded is False and fields == {}
 
 

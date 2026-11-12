@@ -49,7 +49,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-DB_PATH = Path(os.getenv("LEDGER_HOME", ".")).resolve() / "data" / "grid.db"
+DB_PATH = Path(os.getenv("TRADEBUNNY_HOME", ".")).resolve() / "data" / "grid.db"
 
 PAPER = "paper"
 LIVE = "live"

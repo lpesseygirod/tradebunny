@@ -494,7 +494,7 @@ def rank(assessments: Sequence[Assessment], top: int = 3) -> list[Assessment]:
 
 
 # DOCUMENTATION ONLY. This was the system prompt for a model call in analyst.py.
-# That call is gone — Grid Pilot has no AI at runtime — and nothing sends this
+# That call is gone — TradeBunny has no AI at runtime — and nothing sends this
 # anywhere. It is kept because it is the clearest single statement of what the
 # gates below are for and why each one exists. If you change a threshold in
 # `Thresholds`, change the matching sentence here too.

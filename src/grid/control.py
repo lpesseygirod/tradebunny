@@ -27,10 +27,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-# Resolved against LEDGER_HOME so a systemd unit, a cron job or a container with a
+# Resolved against TRADEBUNNY_HOME so a systemd unit, a cron job or a container with a
 # different working directory reads the SAME file the CLI wrote. A relative default
 # here would silently give each process its own view of whether trading is halted.
-DEFAULT_PATH = Path(os.getenv("LEDGER_HOME", ".")).resolve() / "data" / "control.json"
+DEFAULT_PATH = Path(os.getenv("TRADEBUNNY_HOME", ".")).resolve() / "data" / "control.json"
 
 
 class _FileLock:
@@ -85,10 +85,12 @@ class ControlState:
     reason: str = ""
     updated_at: str = ""
 
-    # Safety caps. The executor checks these before every order; they are the
-    # backstop for a plan that slipped through validation with silly numbers.
-    max_concurrent_grids: int = 3
-    max_total_quote: float = 500.0
+    # Safety caps, the backstop for a plan that slipped through validation with
+    # silly numbers. The approval page refuses an amount over max_total_quote,
+    # and the executor loop re-checks both caps on every pass
+    # (`executor.admit`): a grid over either cap places no orders.
+    max_concurrent_grids: int = 3     # grids running at once
+    max_total_quote: float = 500.0    # the most any one grid may commit
     live_trading: bool = False        # explicit opt-in; paper until you flip it
 
 

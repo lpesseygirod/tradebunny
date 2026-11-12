@@ -39,10 +39,15 @@ wrong in this direction under-deploys capital; being wrong the other way would
 buy a level twice.
 
 STATE FOR THE UI is a JSON snapshot per plan under `data/state/`, written at the
-end of every run. As in `web.py`, there is no database on the grid side of this
-repo — plans and control are files, and the executor's snapshot is a file too,
-so the UI reads the same bytes the executor wrote rather than a second copy that
-can disagree.
+end of every run. Plans and control are files too, so the UI reads the same
+bytes the executor wrote. Fills and events also go to the SQLite store
+(`store.py`) when one is passed, which is what the app's trade list reads.
+
+PAPER TRADING. `PaperExchange` is a local simulated exchange. In the executor
+loop, `sync_paper_market` feeds it the real OKX last price every pass, funds
+each approved grid with its approved amount, and fills resting orders the
+price reaches. Nothing is ever sent to OKX: the live order client
+(`LiveExchange`) is not built.
 """
 
 from __future__ import annotations
@@ -64,8 +69,8 @@ from .plan import GridPlan, Status
 
 log = logging.getLogger(__name__)
 
-STATE_DIR = Path(os.getenv("LEDGER_HOME", ".")).resolve() / "data" / "state"
-HEARTBEAT_PATH = Path(os.getenv("LEDGER_HOME", ".")).resolve() / "data" / "heartbeat.json"
+STATE_DIR = Path(os.getenv("TRADEBUNNY_HOME", ".")).resolve() / "data" / "state"
+HEARTBEAT_PATH = Path(os.getenv("TRADEBUNNY_HOME", ".")).resolve() / "data" / "heartbeat.json"
 
 #: A heartbeat older than this means the executor is not running. That is not a
 #: cosmetic problem: while it is down, every open grid has no stop-loss, because
@@ -173,6 +178,8 @@ class PaperExchange:
         self.prices: dict[str, float] = {}
         self.fills: list[dict[str, Any]] = []
         self.market_sells: list[dict[str, Any]] = []
+        #: Plan ids this paper account has already been funded for. See `fund`.
+        self.funded: list[str] = []
         self._seq = 0
         self._default_quote = quote
         if price:
@@ -190,6 +197,7 @@ class PaperExchange:
         self.prices = raw.get("prices", {})
         self.fills = raw.get("fills", [])
         self.market_sells = raw.get("market_sells", [])
+        self.funded = raw.get("funded", [])
         self._seq = raw.get("seq", 0)
 
     def _save(self) -> None:
@@ -200,7 +208,8 @@ class PaperExchange:
             "orders": {k: asdict(v) for k, v in self.orders.items()},
             "balances": {k: asdict(v) for k, v in self.balances.items()},
             "prices": self.prices, "fills": self.fills,
-            "market_sells": self.market_sells, "seq": self._seq,
+            "market_sells": self.market_sells, "funded": self.funded,
+            "seq": self._seq,
         }
         fd, tmp = tempfile.mkstemp(dir=str(self.path.parent), suffix=".tmp")
         try:
@@ -294,6 +303,20 @@ class PaperExchange:
         self.prices[symbol] = float(price)
         self._save()
 
+    def fund(self, symbol: str, plan_id: str, quote: float) -> bool:
+        """Give an approved plan its paper money, once.
+
+        A paper grid needs quote currency to buy with, and the only honest
+        amount is the one that was approved. Recorded by plan id so a restart,
+        or a second plan on the same symbol, is never funded twice. Returns
+        True if money was added on this call.
+        """
+        if plan_id in self.funded or quote <= 0:
+            return False
+        self.funded.append(plan_id)
+        self.credit(symbol, quote=quote)      # credit() saves
+        return True
+
     def credit(self, symbol: str, base: float = 0.0, quote: float = 0.0) -> None:
         b = self.fetch_balance(symbol)
         self.balances[symbol] = Balance(b.base + base, b.quote + quote)
@@ -368,6 +391,90 @@ def make_exchange(control: Control, path: Optional[Path] = None) -> Exchange:
     if control.is_live():
         return LiveExchange()
     return PaperExchange(path)
+
+
+# ------------------------------------------------------------- paper market
+
+def sync_paper_market(exchange: PaperExchange, plans: list[GridPlan],
+                      prices: Callable[[], dict[str, float]],
+                      store: Optional[Any] = None,
+                      held: Optional[dict[str, str]] = None) -> dict[str, str]:
+    """Bring the paper exchange up to the real market before a pass.
+
+    For every plan: fund it once with its approved amount, then move the paper
+    mark to the real last price, filling every resting order that price
+    reaches (`PaperExchange.advance_to`). `prices` returns {symbol: last
+    price}; the loop passes `cli.okx_last_prices`, so this module still never
+    talks to an exchange itself. Without this the paper exchange has
+    no price, no money and no fills, and `run_once` cannot run.
+
+    One sample per pass, so a wick that comes and goes between two passes is
+    missed. That under-counts fills rather than inventing them.
+
+    A plan in `held` (see `admit`) still gets a price, because its stop is
+    still enforced, but is not funded until it is admitted.
+
+    Returns {symbol: problem} for symbols that got no fresh price. The caller
+    must skip those plans: a paper stop-loss checked against a stale price
+    proves nothing.
+    """
+    if not plans:
+        return {}
+    try:
+        quotes = prices()
+    except Exception as e:
+        why = f"no market price ({type(e).__name__}: {e})"
+        return {p.symbol: why for p in plans}
+
+    problems: dict[str, str] = {}
+    for plan in plans:
+        if plan.status is Status.APPROVED and plan.id not in (held or {}) and exchange.fund(
+                plan.symbol, plan.id, plan.max_quote_total):
+            log.info("%s: paper account funded with %g", plan.symbol,
+                     plan.max_quote_total)
+            _event(store, gridstore.EXECUTOR,
+                   f"{plan.symbol} paper grid funded with {plan.max_quote_total:.2f}",
+                   symbol=plan.symbol, plan_id=plan.id)
+        price = quotes.get(plan.symbol)
+        if not price or price <= 0:
+            problems[plan.symbol] = f"no market price for {plan.symbol}"
+            continue
+        exchange.advance_to(plan.symbol, float(price))
+    return problems
+
+
+# --------------------------------------------------------------- safety caps
+
+def admit(plans: list[GridPlan], control: Control) -> dict[str, str]:
+    """Hold back any grid that breaks the caps in control.json.
+
+    Returns {plan id: reason}. A held plan places no orders (see `run_once`).
+    The caps mean what they mean everywhere else in the code:
+
+      max_concurrent_grids   how many grids may run at once
+      max_total_quote        the most any one grid may commit
+                             (the same check the approval page makes)
+
+    Grids already running keep their place ahead of newly approved ones, and
+    older approvals ahead of newer ones, so lowering a cap holds the newest
+    grids first.
+    """
+    s = control.state()
+    order = {Status.RUNNING: 0, Status.APPROVED: 1}
+    ranked = sorted(plans, key=lambda p: (order.get(p.status, 2),
+                                          p.decided_at or "", p.id))
+    held: dict[str, str] = {}
+    admitted = 0
+    for plan in ranked:
+        if plan.max_quote_total > s.max_total_quote + 1e-9:
+            held[plan.id] = (f"held: commits {plan.max_quote_total:g}, over the "
+                             f"{s.max_total_quote:g} per-grid cap in control.json")
+        elif admitted >= s.max_concurrent_grids:
+            held[plan.id] = (f"held: {s.max_concurrent_grids} grid(s) already "
+                             f"running, the max_concurrent_grids cap")
+        else:
+            admitted += 1
+    return held
 
 
 # ----------------------------------------------------------------- run state
@@ -645,10 +752,15 @@ def run_once(plan: GridPlan, exchange: Exchange, control: Control, *,
              notify: Callable[[str], None] = _notify,
              quality: Optional[Any] = None,
              quality_path: Optional[Path] = None,
-             store: Optional[Any] = None) -> GridState:
+             store: Optional[Any] = None,
+             held: str = "") -> GridState:
     """One pass. Safe to call repeatedly; safe to call after a crash.
 
         >>> run_once(plan, PaperExchange(), Control())
+
+    `held` is the reason `admit` gave for holding this grid back, if any: the
+    stop is still enforced, but no order is placed and resting ones are
+    cancelled.
 
     Returns the snapshot it wrote, which is also what the UI reads.
     """
@@ -748,6 +860,18 @@ def run_once(plan: GridPlan, exchange: Exchange, control: Control, *,
                f"(stop {plan.stop_below:g}). "
                f"{'Sold ' + format(units, 'g') + ' units. ' if sold else ''}"
                f"Grid halted; it will not restart on its own.")
+        state.save(state_dir)
+        return state
+
+    # --- 3b. the caps in control.json -----------------------------------
+    # After the stop, so a held grid that already holds stock is still
+    # protected. Like a halt: no new orders, resting ones cancelled, nothing
+    # sold.
+    if held:
+        state.halted = True
+        state.note = held
+        state.cancelled = cancel_plan_orders(plan, exchange)
+        log.warning("%s: %s", plan.symbol, held)
         state.save(state_dir)
         return state
 

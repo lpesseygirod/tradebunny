@@ -39,7 +39,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-EXECUTION_PATH = (Path(os.getenv("LEDGER_HOME", ".")).resolve()
+EXECUTION_PATH = (Path(os.getenv("TRADEBUNNY_HOME", ".")).resolve()
                   / "data" / "execution.json")
 
 #: Fills required before calibration mode will hand over to live Kelly sizing.

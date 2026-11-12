@@ -88,7 +88,7 @@ FEE_REFERENCE_INSTRUMENT = "BTC-USDT"
 
 #: Where the permissivity setting lives. Read at scan time, not import time,
 #: so editing config.yaml takes effect without a restart.
-CONFIG_PATH = Path(os.getenv("LEDGER_HOME", ".")).resolve() / "config.yaml"
+CONFIG_PATH = Path(os.getenv("TRADEBUNNY_HOME", ".")).resolve() / "config.yaml"
 
 
 def sizing_mode(path: Optional[Path] = None) -> str:

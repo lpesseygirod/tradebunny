@@ -53,7 +53,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-LABEL = "com.gridpilot.executor"
+LABEL = "com.tradebunny.executor"
 
 #: Rotate once a log passes this, keeping this many old files.
 MAX_LOG_BYTES = 8 * 1024 * 1024
@@ -74,7 +74,7 @@ def repo_root() -> Path:
 
 
 def log_dir(home: Optional[Path] = None) -> Path:
-    return Path(home or os.getenv("LEDGER_HOME") or repo_root()) / "data" / "logs"
+    return Path(home or os.getenv("TRADEBUNNY_HOME") or repo_root()) / "data" / "logs"
 
 
 def python_executable() -> str:
@@ -110,7 +110,7 @@ def build_plist(label: str = LABEL, home: Optional[Path] = None,
         "EnvironmentVariables": {
             "PYTHONPATH": str(root / "src"),
             "PYTHONUNBUFFERED": "1",
-            "LEDGER_HOME": str(Path(home) if home else root),
+            "TRADEBUNNY_HOME": str(Path(home) if home else root),
             "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         },
         "ProcessType": "Background",
