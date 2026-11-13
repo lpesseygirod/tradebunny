@@ -27,10 +27,10 @@
       <a href="{{ url_for('scorecard') }}" class="{{ 'on' if ep in ('scorecard', 'postmortem_page') }}">Scorecard</a>
       <a href="{{ url_for('how') }}" class="{{ 'on' if ep == 'how' }}">How it decides</a>
     </nav>
-    {% if peer_url %}
+    {% if books|length > 1 %}
     <nav class="seg books" aria-label="Book">
-      {% if book == 'main' %}<a class="on" href="{{ url_for('dashboard') }}">With you</a><a href="{{ peer_url }}">Autopilot</a>
-      {% else %}<a href="{{ peer_url }}">With you</a><a class="on" href="{{ url_for('dashboard') }}">Autopilot</a>{% endif %}
+      {% for name in ['With you', 'Autopilot', 'Rules only'] %}{% for b in books if b.name == name %}
+      <a class="{{ 'on' if b.on }}" href="{{ b.url }}">{{ b.name }}</a>{% endfor %}{% endfor %}
     </nav>
     {% endif %}
     <div class="modes">

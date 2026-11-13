@@ -106,8 +106,7 @@
     <small>{{ 'This book approves its own proposals; the rules are still re-checked before every order.' if autopilot else 'Nothing trades until you approve. Approving re-checks every rule at today\'s price.' }}</small></div></div>
   <ul class="rows">
     {% for x in p.pending %}<li><span class="grow"><b>{{ x.summary }}</b> <span class="small muted">{{ x.expires }}</span></span>
-      <form method="post" action="{{ url_for('reject', pid=x.id) }}"><input type="hidden" name="next" value="{{ url_for('pipeline') }}#ok"><button class="btn light sm">Reject</button></form>
-      <form method="post" action="{{ url_for('approve', pid=x.id) }}"><input type="hidden" name="next" value="{{ url_for('pipeline') }}#ok"><button class="btn accent sm">Approve</button></form></li>
+      <form method="post" action="{{ url_for('approve', pid=x.id) }}" class="row decide"><input type="hidden" name="next" value="{{ url_for('pipeline') }}#ok"><input type="text" name="why" class="why" maxlength="300" placeholder="Why? One line, optional: it builds your own record"><button class="btn light sm" formaction="{{ url_for('reject', pid=x.id) }}">Reject</button><button class="btn accent sm">Approve</button></form></li>
     {% else %}<li class="muted">Nothing waiting.</li>{% endfor %}
   </ul>
 </section>

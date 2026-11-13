@@ -24,6 +24,10 @@ DECISION_CLS = {"swap": "accent", "keep": "hold"}
 ROLE_SUB = {"macro": "The economy", "thesis": "Five-point chokepoint test",
             "valuation": "Is it priced in?", "earnings": "The latest results",
             "redteam": "Pre-mortem: why did we lose 40%?"}
+METRIC_LABEL = {"stock_vs_index_3m": "the stock vs the index in 3 months",
+                "stock_vs_index_12m": "the stock vs the index in 12 months",
+                "revenue_growth_next_q": "revenue growth next quarter",
+                "op_margin_next_q": "operating margin next quarter"}
 VOTE_LABEL = {"buy": "Buy", "wait": "Wait", "no": "No"}
 VOTE_CLS = {"buy": "buy", "wait": "watch", "no": "sell"}
 VERDICT_LABEL = {"send_to_committee": "Send to the committee", "keep_watching": "Keep watching", "drop": "Drop"}
@@ -595,6 +599,7 @@ def stock(store: Store, pf: Portfolio, m: Mandate, steward: Steward, ticker: str
         "postmortems": [p for p in store.postmortems() if p["ticker"] == ticker],
         "news": steward.news(ticker, 8), "news_live": steward.mode == "live",
         "in_universe": ticker in m.universe(),
+        "quant": _quant(store, steward, m, ticker),
         "dossier": store.latest_dossier(ticker), "alerts": alert_rows(store, m, ticker),
         "candidate": cand, "VERDICT_LABEL": VERDICT_LABEL, "VERDICT_CLS": VERDICT_CLS,
     }
@@ -725,3 +730,11 @@ def portfolio_meeting(store: Store, m: Mandate, mid: int) -> dict:
             "ranking": ranking, "rules": (rules or {}).get("data"), "proposal": proposal,
             "running": running, "verdict": None,
             "stopped": [x for x in steps if x["phase"] == "rules" and not x.get("data")]}
+
+
+def _quant(store: Store, steward: Steward, m: Mandate, ticker: str) -> dict:
+    from . import quant
+    try:
+        return quant.Desk(steward, store).stock(ticker, m.benchmark)
+    except Exception:
+        return {}

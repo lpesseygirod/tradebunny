@@ -140,9 +140,7 @@ class Steward:
             return hit[1]
         if self.snapshot:
             raise DataError(f"no {currency} rate in the snapshot")
-        pair = FX_PAIRS.get(currency)
-        if not pair:
-            raise DataError(f"no FX pair for {currency}")
+        pair = FX_PAIRS.get(currency) or f"EUR{currency}=X"     # e.g. EURTWD=X for TSMC's statements
         import yfinance as yf
         rate = _num(yf.Ticker(pair).fast_info.get("lastPrice"))
         if not rate:

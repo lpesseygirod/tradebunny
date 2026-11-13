@@ -303,3 +303,108 @@ def scorecard(store: Store, m: Mandate) -> dict:
         "dismissed": len(dismissed), "judgments": judgments,
         "enough": len(judged) >= 10,
     }
+
+
+# ------------------------------------------------------------- forecasts
+
+FORECAST_DAYS = {"stock_vs_index_3m": 91, "stock_vs_index_12m": 365}
+QUARTER_GIVE_UP_DAYS = 200          # no new quarter by then: the forecast is void
+
+
+def _value(store: Store, desk, p: dict) -> tuple[Optional[float], str]:
+    """The measured value for a forecast, or (None, why not yet)."""
+    if p["metric"] in FORECAST_DAYS:
+        h = FORECAST_DAYS[p["metric"]]
+        marks = {x["horizon_days"]: x for x in store.marks(p["meeting_id"])}
+        if 0 in marks and h in marks:
+            return excess_pts(marks[0], marks[h])[2], f"measured at the {h}-day mark"
+        return None, "not due"
+    q = desk.quarters(p["ticker"]) if desk else {}
+    later = sorted(d for d in q if d > p["made_on"])
+    if not later:
+        return None, "no new quarter yet"
+    d = later[0]
+    cur = q[d]
+    if p["metric"] == "op_margin_next_q":
+        if cur.get("op") is None or not cur.get("revenue"):
+            return None, "no operating income reported"
+        return cur["op"] / cur["revenue"] * 100, f"quarter ending {d}"
+    year_ago = [x for x in q if x[:4] == str(int(d[:4]) - 1) and x[5:7] == d[5:7]]
+    if not year_ago or not q[year_ago[0]].get("revenue"):
+        return None, "no year-ago quarter to compare"
+    return (cur["revenue"] / q[year_ago[0]]["revenue"] - 1) * 100, f"quarter ending {d} vs {year_ago[0]}"
+
+
+def resolve_forecasts(store: Store, steward: Steward, m: Mandate) -> int:
+    """Score every open forecast whose answer is known. Returns how many."""
+    from . import quant
+    desk = quant.Desk(steward, store)
+    n = 0
+    for p in store.predictions("open"):
+        try:
+            v, why = _value(store, desk, p)
+        except Exception:
+            continue
+        if v is None:
+            age = _age_days(p["made_on"])
+            if p["metric"] not in FORECAST_DAYS and age > QUARTER_GIVE_UP_DAYS:
+                store.resolve_prediction(p["id"], "void", None, why)
+                n += 1
+            continue
+        hit = v > p["threshold"] if p["above"] else v < p["threshold"]
+        store.resolve_prediction(p["id"], "hit" if hit else "miss", v, why)
+        n += 1
+    return n
+
+
+def forecast_scores(store: Store) -> dict[str, dict]:
+    """Per member: forecasts resolved, hit rate, Brier score (0 perfect, 0.25 a coin flip)."""
+    out: dict[str, dict] = {}
+    for p in store.predictions():
+        r = out.setdefault(p["role"], {"made": 0, "resolved": 0, "hits": 0, "pairs": [], "open": 0})
+        r["made"] += 1
+        if p["status"] == "open":
+            r["open"] += 1
+        elif p["status"] in ("hit", "miss"):
+            r["resolved"] += 1
+            r["hits"] += p["status"] == "hit"
+            r["pairs"].append((p["probability"] / 100, p["status"] == "hit"))
+    for r in out.values():
+        r["brier"] = _brier(r.pop("pairs"))
+        r["hit_rate"] = r["hits"] / r["resolved"] if r["resolved"] else None
+    return out
+
+
+def forecast_record_text(store: Store, minimum: int = 5) -> str:
+    """For the fact sheet: only members with enough resolved forecasts to mean something."""
+    lines = []
+    for role, r in sorted(forecast_scores(store).items()):
+        if r["resolved"] >= minimum and r["brier"] is not None:
+            lines.append(f"- {ROLES[role].title}: {r['resolved']} forecasts resolved, {r['hits']} came true, "
+                         f"Brier {r['brier']:.2f} (0 is perfect, 0.25 is a coin flip)")
+    return "\n".join(lines)
+
+
+# ------------------------------------------------------------- your calls
+
+def your_calls(store: Store, m: Mandate) -> list[dict]:
+    """Every proposal you answered, with your reason and how the stock did since.
+    Approving a buy, or rejecting a sale, is a bullish call; the reverse is bearish."""
+    marks = {r["meeting_id"]: r for r in outcomes(store, m)}
+    out = []
+    for p in store.proposals():
+        res = p.get("result") or {}
+        if p["status"] not in ("approved", "rejected") or res.get("by", "you") != "you" or not p["meeting_id"]:
+            continue
+        if p["action"] not in ("buy", "add", "sell", "trim"):
+            continue
+        bullish = (p["status"] == "approved") == (p["action"] in ("buy", "add"))
+        o = marks.get(p["meeting_id"]) or {}
+        latest = o.get("latest")
+        verdict = "pending"
+        if latest:
+            verdict = judge("buy" if bullish else "reject", latest["excess"])
+        out.append({"id": p["id"], "meeting_id": p["meeting_id"], "name": m.name_of(p["ticker"]),
+                    "summary": p["summary"], "status": p["status"], "why": res.get("why") or "",
+                    "decided": (p.get("decided_at") or "")[:10], "latest": latest, "verdict": verdict})
+    return out

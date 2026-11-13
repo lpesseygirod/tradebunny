@@ -100,8 +100,7 @@
         <div class="eyebrow" style="color:var(--accent)">Waiting for your OK</div>
         <p><b>{{ proposal.summary }}.</b> Approving re-checks both halves at today's prices before anything is sold.</p>
         <div class="row">
-          <form method="post" action="{{ url_for('approve', pid=proposal.id) }}"><input type="hidden" name="next" value="{{ url_for('meeting_page', mid=mt.id) }}#approve"><button class="btn accent sm">Approve</button></form>
-          <form method="post" action="{{ url_for('reject', pid=proposal.id) }}"><input type="hidden" name="next" value="{{ url_for('meeting_page', mid=mt.id) }}#approve"><button class="btn light sm">Reject</button></form>
+          <form method="post" action="{{ url_for('approve', pid=proposal.id) }}" class="row decide"><input type="hidden" name="next" value="{{ url_for('meeting_page', mid=mt.id) }}#approve"><input type="text" name="why" class="why" maxlength="300" placeholder="Why? One line, optional: it builds your own record"><button class="btn light sm" formaction="{{ url_for('reject', pid=proposal.id) }}">Reject</button><button class="btn accent sm">Approve</button></form>
         </div>
       {% else %}
         <p><b>{{ {'approved':'Approved','rejected':'You said no','expired':'Expired without an answer','failed':'Approved, but not placed'}[proposal.status] }}</b>

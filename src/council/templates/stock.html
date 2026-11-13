@@ -63,6 +63,25 @@
   </section>
 </div>
 
+{% if s.quant %}{% set q = s.quant %}
+<section class="card mt">
+  <div class="card-head"><h2>The quant desk</h2><span class="tiny muted">Computed by code from Yahoo Finance statements and weekly prices · {{ q.as_of|stamp }}</span></div>
+  <div class="qgrid">
+    <div><span class="eyebrow">Volatility</span><b class="num">{{ q.vol_1y|pct(0) }}</b><small>a year</small></div>
+    <div><span class="eyebrow">Beta</span><b class="num">{{ '%.2f'|format(q.beta) if q.beta is not none else '—' }}</b><small>vs MSCI World</small></div>
+    <div><span class="eyebrow">Worst fall</span><b class="num down">{{ q.max_drawdown_3y|pct(0) }}</b><small>in 3 years</small></div>
+    <div><span class="eyebrow">Momentum</span><b class="num">{{ q.momentum_12_1|pct(0, True) }}</b><small>12-1 months</small></div>
+    <div><span class="eyebrow">Revenue growth</span><b class="num">{{ q.revenue_cagr|pct(1) }}</b><small>a year, {{ q.revenue_years }}</small></div>
+    <div><span class="eyebrow">Operating margin</span><b class="num">{{ q.op_margin|pct(0) }}</b><small>was {{ q.op_margin_then|pct(0) }}</small></div>
+    <div><span class="eyebrow">Free-cash-flow margin</span><b class="num">{{ q.fcf_margin|pct(0) }}</b><small>of revenue</small></div>
+    <div><span class="eyebrow">Net debt / EBITDA</span><b class="num">{{ '%.1fx'|format(q.net_debt_ebitda) if q.net_debt_ebitda is not none else '—' }}</b><small>below 0 = net cash</small></div>
+    <div><span class="eyebrow">P/E now</span><b class="num">{{ '%.0f'|format(q.pe_now) if q.pe_now else '—' }}</b><small>{{ q.pe_vs_avg|pct(0, True) }} vs its {{ '%.0f'|format(q.pe_avg) if q.pe_avg else '—' }} average</small></div>
+    <div><span class="eyebrow">Growth the price assumes</span><b class="num">{{ q.implied_growth|pct(1) }}</b><small>a year for 10 years (reverse DCF)</small></div>
+  </div>
+  <p class="tiny muted" style="margin-top:10px">{{ q.notes|join('; ') }}. Returns are in the listing currency.</p>
+</section>
+{% endif %}
+
 <div class="grid g2 mt">
   <section class="card">
     {% set rf = s.dossier %}

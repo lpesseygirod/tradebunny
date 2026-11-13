@@ -128,6 +128,9 @@ class Mandate(Strict):
     # Autopilot: the council approves its own proposals. The risk engine still
     # re-checks every rule; only your approval step is skipped. Paper only.
     autopilot: bool = False
+    # Rules only: the comparison book. No AI at all: members restate the
+    # committee's notes and code applies the triggers. It approves itself.
+    rules_only: bool = False
     limits: Limits
     instruments: list[Instrument]
     watchlist: list[WatchItem] = []
@@ -149,6 +152,8 @@ class Mandate(Strict):
                 raise ValueError(f"{s} holds {len(stocks)} single stocks")
         if self.autopilot and self.broker.kind != "paper":
             raise ValueError("autopilot trades paper money only: set broker.kind to paper")
+        if self.rules_only and not self.autopilot:
+            raise ValueError("the rules-only book approves itself: set autopilot: true")
         tickers = [i.ticker for i in self.instruments] + [w.ticker for w in self.watchlist]
         if len(tickers) != len(set(tickers)):
             raise ValueError("a ticker appears twice")
@@ -235,5 +240,8 @@ def initialise(overwrite: bool = False, book: str = "") -> Path:
         if book == "autopilot":
             text += ("\n# This book approves its own proposals. Paper money only.\n"
                      "autopilot: true\n")
+        elif book == "rules":
+            text += ("\n# The comparison book: no AI, the committee's rules only. Approves itself.\n"
+                     "autopilot: true\nrules_only: true\n")
         target.write_text(text)
     return target

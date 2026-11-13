@@ -38,7 +38,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from . import agents, approvals, risk
+from . import agents, approvals, quant, risk
 from .agents import ROLES, ScenarioMove
 from .data import Steward
 from .mandate import Mandate
@@ -129,6 +129,7 @@ def bench(store: Store, steward: Steward, m: Mandate, pf: Portfolio) -> list[dic
 def facts(store: Store, steward: Steward, m: Mandate, pf: Portfolio) -> dict:
     quotes = steward.quotes(pf.tickers_needed())
     book = pf.book(quotes)
+    desk = quant.Desk(steward, store)
     rows = []
     for p in pf.positions(quotes):
         if not m.is_stock(p.ticker):
@@ -144,13 +145,18 @@ def facts(store: Store, steward: Steward, m: Mandate, pf: Portfolio) -> dict:
                      "last_decision": (v or {}).get("decision"),
                      "breaker_fired": (v or {}).get("breaker_triggered") or "",
                      "research_file": (((rf or {}).get("data") or {}).get("output") or {}).get("verdict"),
-                     "thesis": i.thesis if i else ""})
+                     "thesis": i.thesis if i else "", **_risk_numbers(desk, p.ticker, m.benchmark)})
     other = {"index": 0.0, "bonds": 0.0, "gold": 0.0}
     for t, val in book.holdings.items():
         i = m.instrument(t)
         if i and i.bucket in other:
             other[i.bucket] += val / book.total
+    try:
+        bk = desk.book({t: v / book.total for t, v in book.holdings.items() if v > 0})
+    except Exception:
+        bk = {}
     return {"total_eur": round(book.total, 2), "cash": round(book.cash / book.total, 4),
+            "book_vol": bk.get("vol"), "book_var_1m": bk.get("var_1m"), "book_weeks": bk.get("weeks"),
             "other": {k: round(v, 4) for k, v in other.items()},
             "stocks": rows, "stock_count": risk.stock_count(book, m),
             "max_stocks": m.limits.max_single_stocks,
@@ -160,19 +166,35 @@ def facts(store: Store, steward: Steward, m: Mandate, pf: Portfolio) -> dict:
             "setting": m.setting}
 
 
+def _risk_numbers(desk: quant.Desk, ticker: str, benchmark: str) -> dict:
+    try:
+        q = desk.stock(ticker, benchmark)
+    except Exception:
+        q = {}
+    return {k: q.get(k) for k in ("vol_1y", "beta", "max_drawdown_3y", "pe_vs_avg", "implied_growth")}
+
+
 def facts_md(f: dict, m: Mandate) -> str:
     lines = [f"# Portfolio meeting, {now()[:10]}",
              f"Paper portfolio €{f['total_eur']:,.0f}; {f['stock_count']} of {f['max_stocks']} single stocks; "
              f"AI-linked {f['ai_weight'] * 100:.1f}% of a {f['ai_cap'] * 100:.0f}% cap; cash "
              f"{f['cash'] * 100:.1f}%; index {f['other']['index'] * 100:.1f}%, bonds "
              f"{f['other']['bonds'] * 100:.1f}%, gold {f['other']['gold'] * 100:.1f}%.",
+             ("The holdings as they are now (quant desk, weekly prices over about 2 years): volatility "
+              f"{f['book_vol'] * 100:.0f}% a year; in the worst 5% of months the book lost "
+              f"{abs(f['book_var_1m']) * 100:.1f}% or more." if f.get("book_vol") and f.get("book_var_1m") is not None
+              else "No portfolio volatility yet: not enough price history."),
              "", "## Single stocks held",
-             "| Stock | Weight (with planned tranches) | Target | Gain | Grade | From | Research file | Breaker fired |",
-             "|---|---|---|---|---|---|---|---|"]
+             "| Stock | Weight (with planned tranches) | Target | Gain | Grade | From | Research file | Breaker fired "
+             "| Volatility | Beta | P/E vs own average | Growth the price implies |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    f1 = lambda x, d=0, sign=False: "n/a" if x is None else (f"{x * 100:+.{d}f}%" if sign else f"{x * 100:.{d}f}%")
     for r in f["stocks"]:
         lines.append(f"| {r['name']} ({r['ticker']}) | {r['weight'] * 100:.1f}% | {r['target'] * 100:.1f}% | "
                      f"{r['gain_pct'] * 100:+.1f}% | {r['grade'] or '-'} | {r['grade_from']} | "
-                     f"{r['research_file'] or '-'} | {r['breaker_fired'] or '-'} |")
+                     f"{r['research_file'] or '-'} | {r['breaker_fired'] or '-'} | {f1(r.get('vol_1y'))} | "
+                     f"{'n/a' if r.get('beta') is None else format(r['beta'], '.2f')} | "
+                     f"{f1(r.get('pe_vs_avg'), 0, True)} | {f1(r.get('implied_growth'), 1)} |")
     lines += ["", "## The bench: committee buy verdicts blocked only by the stock limit"]
     lines += [f"- {b['name']} ({b['ticker']}): grade {b['grade']}, meeting #{b['meeting_id']} on {b['date']}"
               + ("" if b["still_valid"] else " (its trigger is no longer met at today's price)")

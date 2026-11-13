@@ -16,8 +16,11 @@ def home() -> Path:
     return Path(os.getenv("TRADEBUNNY_HOME", ".")).resolve()
 
 
-# Two books, same rules: "main" waits for your OK, "autopilot" approves itself.
-BOOKS = {"main": "council", "autopilot": "council-autopilot"}
+# Three books, same rules: "main" waits for your OK, "autopilot" approves itself,
+# "rules" is the comparison: the committee's rules with no AI at all.
+BOOKS = {"main": "council", "autopilot": "council-autopilot", "rules": "council-rules"}
+BOOK_NAMES = {"main": "With you", "autopilot": "Autopilot", "rules": "Rules only"}
+BOOK_URLS = {"main": "/", "autopilot": "/autopilot/", "rules": "/rules-only/"}
 
 
 def book() -> str:

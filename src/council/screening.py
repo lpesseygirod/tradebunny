@@ -185,6 +185,8 @@ class Dossier(BaseModel):
     valuation: str = Field(description="How the price compares with its own history and peers. Quote the "
                                        "current multiple only from the numbers given to you")
     what_would_change_our_mind: list[str] = Field(description="Two to four events that would prove the idea wrong")
+    peers: list[str] = Field(description="Two to four listed competitors or comparable companies, as Yahoo Finance "
+                                         "tickers with exchange suffix; the quant desk compares them by code")
     verdict: Literal["send_to_committee", "keep_watching", "drop"] = Field(
         description="send_to_committee: worth a full meeting now; keep_watching: real but not now; "
                     "drop: not a chokepoint")
@@ -234,6 +236,7 @@ def _scripted_dossier(name: str, idea: dict, prior: dict) -> Dossier:
         risks=prior.get("breakers") or [idea.get("open_question") or "Not researched (scripted)."],
         valuation="Only the fact-sheet numbers; no history or peers (scripted).",
         what_would_change_our_mind=prior.get("breakers") or [idea.get("open_question") or "-"],
+        peers=[],
         verdict="send_to_committee" if idea else "keep_watching",
         verdict_reason="Scripted rule: a new idea goes to the committee so the pipeline can be seen; "
                        "a real file decides on evidence.")
@@ -256,9 +259,14 @@ def write_dossier(store: Store, steward: Steward, m: Mandate, ticker: str,
                      from_high=round(q.from_high, 3) if q.from_high is not None else None,
                      source=q.source, as_of=q.as_of)
         news = steward.news(ticker, 6)
+        from . import quant
+        desk = quant.Desk(steward, store)
+        qlines = quant.lines(desk.stock(ticker, m.benchmark))
         old = store.latest_dossier(ticker)
         prompt = (f"# Research file: {name} ({ticker})\n\n"
                   f"## Numbers you may quote (Yahoo Finance, {q.as_of})\n{json.dumps(facts, indent=1)}\n\n"
+                  "## The quant desk (computed by code from the statements; cite these)\n"
+                  + "\n".join(qlines) + "\n\n"
                   + (f"## Why the scout suggested it\n{json.dumps(idea, indent=1)}\n\n" if idea else "")
                   + (f"## The committee's last view\n{json.dumps(prior, indent=1)}\n\n" if prior else "")
                   + (f"## Your previous file ({old['created_at'][:10]}): update it, say what changed\n"

@@ -288,3 +288,10 @@ select.input { font: inherit; padding: 7px 10px; border-radius: 10px; border: 1p
 .btn[disabled] { opacity: .45; cursor: not-allowed; }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 ul.votes .grow, .funnel .grow { flex: 1; min-width: 0; }
+.qgrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px 18px; margin-top: 10px; }
+.qgrid > div { display: flex; flex-direction: column; gap: 2px; }
+.qgrid b { font-size: 1.35rem; font-family: var(--display, inherit); }
+.qgrid small { color: var(--muted); font-size: .78rem; }
+@media (max-width: 760px) { .qgrid { grid-template-columns: 1fr 1fr; } }
+form.decide { flex-wrap: wrap; }
+form.decide input.why { flex: 1 1 240px; width: auto; padding: 8px 12px; font-size: .88rem; border-radius: 10px; }

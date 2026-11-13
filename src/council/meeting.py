@@ -25,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from typing import Optional
 
-from . import agents, approvals, learning, risk
+from . import agents, approvals, learning, quant, risk
 from .agents import ROLES, Backend, RoleRefused
 from .data import DataError, Steward
 from .mandate import Mandate
@@ -65,6 +65,7 @@ class Meeting:
         self.store, self.steward, self.m = store, steward, mandate
         self.pf, self.backend = portfolio, backend
         self.cost = 0.0
+        self.desk = quant.Desk(steward, store)
 
     # ------------------------------------------------------------ context
 
@@ -94,7 +95,32 @@ class Meeting:
             "prior": self.prior_view(ticker),
             "setting": self.m.setting,
             "news": self.steward.news(ticker, 6),
+            **self.quant_facts(ticker, book),
         }
+
+    def quant_facts(self, ticker: str, book) -> dict:
+        """The quant desk's numbers for this stock, its peers and our portfolio."""
+        try:
+            q = self.desk.stock(ticker, self.m.benchmark)
+            weights = {t: v / book.total for t, v in book.holdings.items() if v > 0 and self.m.is_stock(t)}
+            bk = self.desk.book(weights) if weights else {}
+            c = quant.corr_to_book(self.desk.raw(ticker) or {}, bk) if bk and ticker not in weights else None
+            peers = []
+            rf = self.store.latest_dossier(ticker)
+            for p in (((rf or {}).get("data") or {}).get("output") or {}).get("peers") or []:
+                pq = self.desk.stock(p, self.m.benchmark)
+                try:
+                    fpe = self.steward.quote(p).forward_pe
+                except DataError:
+                    fpe = None
+                if pq or fpe:
+                    peers.append({"ticker": p, "forward_pe": fpe, "pe_now": pq.get("pe_now"),
+                                  "revenue_cagr": pq.get("revenue_cagr"), "op_margin": pq.get("op_margin"),
+                                  "implied_growth": pq.get("implied_growth")})
+            return {"quant": q, "quant_corr_book": c, "quant_peers": peers}
+        except Exception as e:                      # the desk is extra; it never stops a meeting
+            log.warning("quant desk failed for %s: %s", ticker, e)
+            return {"quant": {}, "quant_corr_book": None, "quant_peers": []}
 
     def facts_md(self, f: dict) -> str:
         q = f["quote"]
@@ -136,6 +162,16 @@ class Meeting:
         past = learning.history_text(self.store, self.m, f["ticker"])
         if past:
             lines += ["", "## The council's past calls on this name, and how they turned out", past]
+        lines += ["", "## The quant desk (computed by code from Yahoo Finance statements and prices; cite these)"]
+        lines += quant.lines(f.get("quant") or {}, f.get("quant_corr_book"))
+        if f.get("quant_peers"):
+            fmt = lambda x, d=1: f"{x * 100:.{d}f}%" if x is not None else "n/a"
+            lines.append("- Peers: " + "; ".join(
+                f"{p['ticker']} fwd P/E {p['forward_pe']:.1f}" if p.get("forward_pe") else f"{p['ticker']} fwd P/E n/a"
+                for p in f["quant_peers"]))
+            lines += [f"  - {p['ticker']}: revenue growth {fmt(p.get('revenue_cagr'))}, operating margin "
+                      f"{fmt(p.get('op_margin'))}, price implies {fmt(p.get('implied_growth'))} growth"
+                      for p in f["quant_peers"]]
         rf = self.store.latest_dossier(f["ticker"])
         if rf:
             o = rf["data"].get("output") or {}
@@ -150,6 +186,9 @@ class Meeting:
                       "- Risks: " + ("; ".join(o.get("risks") or []) or "-"),
                       "- What would change our mind: " + ("; ".join(o.get("what_would_change_our_mind") or []) or "-"),
                       f"- The analyst's call: {o.get('verdict', '-')}: {o.get('verdict_reason', '')}"]
+        record = learning.forecast_record_text(self.store)
+        if record:
+            lines += ["", "## How well each member's past forecasts came true (code-scored; weigh them by this)", record]
         lessons = learning.lessons_text(self.store)
         if lessons:
             lines += ["", "## Lessons the principal approved from past post-mortems (apply them)", lessons]
@@ -215,7 +254,7 @@ class Meeting:
         facts = self.facts_md(f)
         self.store.add_step(mid, "facts", "code", "Fact sheet", facts, f)
         ctx = {"name": f["name"], "ticker": ticker, "quote": f["quote"], "ai": f["ai"],
-               "taiwan": f["taiwan"],
+               "taiwan": f["taiwan"], "shared": facts,
                "prior": f["prior"], "held_eur": f["held_eur"]}
         task = ("Should the council add to this holding, hold it, trim it or sell it?"
                 if kind == "holding" else "Should the council buy this stock?")
@@ -256,6 +295,14 @@ class Meeting:
             mid, "blind", "redteam", "Pre-mortem", res["premortem"],
             pm.story + "\n\n**What would prove the bear right**\n" +
             _md_list(pm.what_would_prove_the_bear_right))
+
+        if self.backend.name != "scripted":           # scripted members make no forecasts
+            for key, role in (("thesis", "thesis"), ("valuation", "valuation"), ("earnings", "earnings"),
+                              ("premortem", "redteam")):
+                for pr in out[key].get("predictions") or []:
+                    self.store.add_prediction(meeting_id=mid, role=role, ticker=ticker, metric=pr["metric"],
+                                              above=int(bool(pr["above"])), threshold=float(pr["threshold"]),
+                                              probability=int(pr["probability"]), why=pr.get("why", ""))
 
         # --- cross-examination -------------------------------------------
         r = self._ask(mid, "objections", "redteam",
@@ -298,12 +345,11 @@ class Meeting:
         vote_md = "\n".join(f"- {ROLES[v['role']].title}: **{v['vote']}**. {v['reason']}" for v in votes)
 
         # --- the verdict ---------------------------------------------------
-        r = self._ask(mid, "cio", "cio",
-                      record + f"\n\n## The members' votes\n{vote_md}\n\n"
+        cio_prompt = (record + f"\n\n## The members' votes\n{vote_md}\n\n"
                       f"{task} Decide, grade it, answer every ranked objection, and answer every "
-                      "member whose vote differs from your decision.",
-                      agents.CIODecision,
-                      {**ctx, "valuation": out["valuation"], "objections": objections, "votes": votes})
+                      "member whose vote differs from your decision.")
+        cio_ctx = {**ctx, "valuation": out["valuation"], "objections": objections, "votes": votes}
+        r = self.two_verdicts(mid, cio_prompt, cio_ctx)
         decision = self._record(mid, "committee", "cio", "Decision", r, r.output.rationale)
 
         # --- the risk engine -------------------------------------------------
@@ -316,6 +362,27 @@ class Meeting:
         self.store.set_meta("review_queue", [q for q in self.store.get_meta("review_queue", [])
                                              if q["ticker"] != ticker])
         return mid
+
+    def two_verdicts(self, mid: int, prompt: str, ctx: dict):
+        """Two independent CIO verdicts. If one acts (buy, add, trim, sell) and
+        the other does not, the council takes the one that does not: a decision
+        that flips on a second reading is not confident enough to trade on."""
+        if self.backend.name == "scripted":           # rules give the same answer twice
+            return self._ask(mid, "cio", "cio", prompt, agents.CIODecision, ctx)
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            a, b = list(ex.map(lambda _: self._ask(mid, "cio", "cio", prompt, agents.CIODecision, ctx), range(2)))
+        acts = lambda r: r.output.decision in ("buy", "add", "trim", "sell")
+        same = a.output.decision == b.output.decision
+        pick = a if same or acts(b) or not acts(a) else b
+        if not same:
+            other = b if pick is a else a
+            pick.output.rationale = (f"**Two independent verdicts disagreed** ({a.output.decision} and "
+                                     f"{b.output.decision}). The council takes the cautious one: "
+                                     f"{pick.output.decision}.\n\n" + pick.output.rationale)
+            pick.research = (pick.research + f"\n\nSecond verdict: {other.output.decision} "
+                             f"(grade {other.output.grade}). {other.output.rationale}").strip()
+        pick.cost_usd = a.cost_usd + b.cost_usd
+        return pick
 
     def vote(self, mid: int, record: str, task: str, ctx: dict) -> list[dict]:
         """Every member votes after the debate, in parallel, on the full record."""

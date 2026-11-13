@@ -178,7 +178,9 @@ def run(store: Store, steward: Steward, m: Mandate, pf: Portfolio, backend: Back
 
 
 def daily(store: Store, steward: Steward, m: Mandate, pf: Portfolio,
-          backend: Optional[Backend] = None) -> list[str]:
+          backend: Optional[Backend] = None, stages_on: bool = True) -> list[str]:
+    """`stages_on=False` (the rules-only book): no watch, scout, research,
+    portfolio meeting or post-mortems; only the bookkeeping and the agenda."""
     events = []
     n = approvals.expire(store)
     if n:
@@ -187,6 +189,9 @@ def daily(store: Store, steward: Steward, m: Mandate, pf: Portfolio,
     n = learning.update_marks(store, steward, m)
     if n:
         events.append(f"Scorekeeper: {n} past decision{'s' if n != 1 else ''} measured against the index")
+    n = learning.resolve_forecasts(store, steward, m)
+    if n:
+        events.append(f"Scorekeeper: {n} member forecast{'s' if n != 1 else ''} scored")
     today = now()[:10]
     if (today >= m.limits.watchlist_deadline and not store.get_meta("deadline_done")
             and not any(p["action"] == "deadline" for p in store.proposals("pending"))):
@@ -200,8 +205,9 @@ def daily(store: Store, steward: Steward, m: Mandate, pf: Portfolio,
                 events.append(f"Proposed: move €{spare:,.0f} of unused reserve into the index (needs your OK)")
         else:
             store.set_meta("deadline_done", today)
-    events += watch.run(store, steward, m, pf, backend)
-    if backend is not None:
+    if stages_on:
+        events += watch.run(store, steward, m, pf, backend)
+    if backend is not None and stages_on:
         events += stages(store, steward, m, pf, backend)
     if backend is not None:
         ids = run(store, steward, m, pf, backend)
@@ -212,7 +218,7 @@ def daily(store: Store, steward: Steward, m: Mandate, pf: Portfolio,
             events.append(f"Meeting #{mid} on {c['name']} ({c['reason']}): {d}")
         if not ids:
             events.append("Scan: nothing for the council to discuss today")
-    if backend is not None:
+    if backend is not None and stages_on:
         left = m.limits.max_postmortems_per_month - learning.postmortems_this_month(store)
         for case in learning.due_postmortems(store, m)[:max(0, left)]:
             pid = learning.run_postmortem(store, steward, m, case, backend)

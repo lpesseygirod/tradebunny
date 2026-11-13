@@ -114,5 +114,39 @@
     </ul>
   </section>
 </div>
+
+<section class="card mt" id="mine">
+  <div class="card-head"><h2>Your calls</h2><span class="tiny muted">Every proposal you answered, scored like the members</span></div>
+  <ul class="rows">
+    {% for c in mine %}<li style="align-items:flex-start">
+      <span class="small muted" style="width:64px;flex:0 0 64px">{{ c.decided|day }}</span>
+      <div class="grow small"><b>{{ 'You approved' if c.status == 'approved' else 'You said no' }}</b>: <a class="link" href="{{ url_for('meeting_page', mid=c.meeting_id) }}">{{ c.summary }}</a>
+        {% if c.why %}<div class="muted">"{{ c.why }}"</div>{% endif %}
+        {% if c.latest %}<div class="tiny muted">After {{ (c.latest.horizon / 30.4)|round|int }} months: {{ '%+.1f'|format(c.latest.excess) }} pts vs the index</div>{% endif %}</div>
+      <span class="pill {{ {'right':'ok','wrong':'sell','noise':'notyet','pending':'notyet'}[c.verdict] }}">{{ {'right':'Right','wrong':'Wrong','noise':'Too close','pending':'Too recent'}[c.verdict] }}</span></li>
+    {% else %}<li class="muted small">You haven't answered a proposal yet. When you do, add a line on why: it's how you'll see your own record.</li>{% endfor %}
+  </ul>
+</section>
+<section class="card mt" id="forecasts">
+  <div class="card-head"><h2>Forecasts: who is calibrated?</h2>
+    <span class="tiny muted">Each member makes two or three checkable forecasts per meeting; code scores them</span></div>
+  <p class="small muted">A good forecaster's 70% calls come true about 70% of the time. The Brier score measures that: 0 is perfect, 0.25 is a coin flip, higher is worse than guessing.
+    Once a member has 5 scored forecasts, the CIO sees their record before every decision.</p>
+  {% if fs %}
+  <div class="table-wrap"><table>
+    <tr><th>Member</th><th class="r">Made</th><th class="r">Scored</th><th class="r">Came true</th><th class="r">Brier</th><th>Open</th></tr>
+    {% for role, r in fs.items() %}<tr><td><b>{{ ROLE_STYLE[role][0] }}</b></td><td class="r num">{{ r.made }}</td><td class="r num">{{ r.resolved }}</td>
+      <td class="r num">{{ r.hit_rate|pct(0) if r.hit_rate is not none else '—' }}</td>
+      <td class="r num {{ 'up' if r.brier is not none and r.brier < 0.2 else 'down' if r.brier is not none and r.brier > 0.25 }}">{{ '%.2f'|format(r.brier) if r.brier is not none else '—' }}</td>
+      <td class="small muted">{{ r.open }} waiting</td></tr>{% endfor %}
+  </table></div>
+  <details style="margin-top:10px"><summary class="small">The latest forecasts</summary>
+    <ul class="rows">{% for p in forecasts %}<li style="align-items:flex-start">
+      <span class="small muted" style="width:64px;flex:0 0 64px">{{ p.made_on|day }}</span>
+      <div class="grow small"><b>{{ ROLE_STYLE[p.role][0] }}</b> on {{ mandate.name_of(p.ticker) }}: {{ METRIC_LABEL[p.metric] }} {{ 'above' if p.above else 'below' }} {{ '%g'|format(p.threshold) }}{{ ' pts' if 'index' in p.metric else '%' }}, {{ p.probability }}% likely.
+        <span class="muted">{{ p.why }}</span>{% if p.actual is not none %}<div class="tiny muted">Actual {{ '%.1f'|format(p.actual) }} · {{ p.note }}</div>{% endif %}</div>
+      <span class="pill {{ {'hit':'ok','miss':'sell','void':'notyet','open':'notyet'}[p.status] }}">{{ {'hit':'Came true','miss':'Wrong','void':'Void','open':'Open'}[p.status] }}</span></li>{% endfor %}</ul></details>
+  {% else %}<p class="muted">No forecasts yet: they start with the first real AI meeting (scripted members make none).</p>{% endif %}
+</section>
 {% endblock %}
 {% block footer %}The council measures itself; only you decide what it learns.{% endblock %}

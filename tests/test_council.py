@@ -1081,3 +1081,164 @@ class TestStagePages:
     def test_research_from_the_stock_page(self, c, st):
         c.post("/research", data={"ticker": "TSM"})
         assert st.latest_dossier("TSM") and b"The research file" in c.get("/stocks/TSM").data
+
+
+# ------------------------------------------------------------ quant desk
+
+from council import learning, quant  # noqa: E402
+
+
+class TestQuantMaths:
+    def test_reverse_dcf_finds_the_growth_it_was_given(self):
+        ev = quant.dcf_value(100.0, 0.12)
+        assert quant.implied_growth(ev, 100.0) == pytest.approx(0.12, abs=1e-6)
+
+    def test_no_growth_answer_for_negative_cash_flow(self):
+        assert quant.implied_growth(1000.0, -5.0) is None
+
+    def test_drawdown_beta_and_var(self):
+        assert quant.max_drawdown([100, 120, 60, 90]) == pytest.approx(-0.5)
+        b = [0.01, -0.02, 0.015, -0.01, 0.02, -0.005] * 10
+        assert quant.beta([2 * x for x in b], b) == pytest.approx(2.0)
+        assert quant.var_95([0.01] * 30 + [-0.05] * 10) < 0
+
+    def test_the_desk_reads_real_saved_numbers_offline(self, steward, st, m):
+        q = quant.Desk(steward, st).stock("ASML.AS", m.benchmark)
+        for k in ("vol_1y", "beta", "revenue_cagr", "op_margin", "pe_avg", "implied_growth"):
+            assert q.get(k) is not None, k
+        assert any("Reverse DCF" in n for n in q["notes"])
+
+    def test_statements_in_another_currency_are_converted(self, steward, st, m):
+        q = quant.Desk(steward, st).stock("TSM", m.benchmark)        # trades in USD, reports in TWD
+        assert 5 < q["pe_now"] < 200
+
+    def test_the_fact_sheet_carries_the_desk(self, st, steward, m, pf):
+        mt = meeting.Meeting(st, steward, m, pf, agents.ScriptedBackend())
+        text = mt.facts_md(mt.fact_sheet("IFX.DE"))
+        assert "## The quant desk" in text and "reverse DCF" in text and "correlation with our portfolio" in text
+
+    def test_the_portfolio_meeting_sees_book_risk(self, st, steward, m, pf):
+        f = review.facts(st, steward, m, pf)
+        assert f["book_vol"] and f["book_var_1m"] < 0
+        assert "worst 5% of months" in review.facts_md(f, m)
+
+
+class TestForecasts:
+    def forecast(self, st, mid, metric, above, threshold, prob, role="thesis"):
+        return st.add_prediction(meeting_id=mid, role=role, ticker="HWM", metric=metric, above=int(above),
+                                 threshold=threshold, probability=prob)
+
+    def test_index_forecasts_are_scored_from_the_marks(self, st, steward, m, pf):
+        mt, _ = run(st, steward, m, pf, "HWM")
+        self.forecast(st, mt["id"], "stock_vs_index_3m", True, 0, 70)
+        age_decision(st, mt["id"], 100, 0.8)              # bought 100 days ago, 20% cheaper: it beat the index
+        learning.update_marks(st, steward, m)
+        assert learning.resolve_forecasts(st, steward, m) == 1
+        p = st.predictions()[0]
+        assert p["status"] == "hit" and p["actual"] > 0
+        s = learning.forecast_scores(st)["thesis"]
+        assert s["resolved"] == 1 and s["brier"] == pytest.approx(0.09)
+
+    def test_open_forecasts_wait(self, st, steward, m, pf):
+        mt, _ = run(st, steward, m, pf, "HWM")
+        self.forecast(st, mt["id"], "stock_vs_index_12m", True, 0, 60)
+        assert learning.resolve_forecasts(st, steward, m) == 0
+
+    def test_the_cio_sees_a_record_only_once_it_means_something(self, st):
+        for i in range(5):
+            pid = self.forecast(st, 1, "stock_vs_index_3m", True, 0, 80)
+            st.resolve_prediction(pid, "hit" if i < 4 else "miss", 1.0)
+        assert "Thesis analyst: 5 forecasts resolved, 4 came true" in learning.forecast_record_text(st)
+        assert learning.forecast_record_text(st, minimum=6) == ""
+
+    def test_scripted_members_make_no_forecasts(self, st, steward, m, pf):
+        run(st, steward, m, pf, "HWM")
+        assert st.predictions() == []
+
+    def test_forecasts_are_clamped(self):
+        raw = {"metric": "op_margin_next_q", "above": True, "threshold": 20, "probability": 100, "why": "w"}
+        memo = agents.ScriptedBackend()._premortem({"name": "X", "prior": {}})
+        memo.predictions = [agents.Prediction.model_validate(raw)] * 5
+        out = agents.tidy(memo)
+        assert len(out.predictions) == 3 and out.predictions[0].probability == 99
+
+
+class TestSecondVerdict:
+    def test_a_split_verdict_takes_the_cautious_side(self, st, steward, m, pf):
+        class Split(agents.ScriptedBackend):
+            name = "fake"
+            n = 0
+            def _cio(self, c):
+                Split.n += 1
+                d = super()._cio(c)
+                return d.model_copy(update={"decision": "buy" if Split.n == 1 else "watch",
+                                            "grade": "A", "conviction": "core"})
+        mt, _ = run(st, steward, m, pf, "HWM", Split())
+        assert Split.n == 2 and mt["decision"]["decision"] == "watch"
+        assert "Two independent verdicts disagreed" in mt["decision"]["rationale"]
+
+    def test_the_fact_sheet_is_cached_for_every_member(self):
+        role = agents.ROLES["thesis"]
+        system, prompt = agents.ClaudeBackend.split(role, "FACTS\n\nAsk", {"shared": "FACTS"})
+        assert system[0]["cache_control"] and "FACTS" in system[0]["text"] and system[1]["text"] == role.system
+        assert "FACTS" not in prompt and prompt.endswith("Ask")
+        assert agents.ClaudeBackend.split(role, "other", {"shared": "FACTS"}) == (role.system, "other")
+
+
+class TestYourCalls:
+    def test_your_reason_is_kept_and_scored(self, st, steward, m, pf):
+        from council import approvals
+        mt, _ = run(st, steward, m, pf, "TSM")
+        approvals.approve(st, pf, m, mt["outcome"]["proposal"], why="TSMC is the only 2nm foundry")
+        calls = learning.your_calls(st, m)
+        assert calls[0]["why"] == "TSMC is the only 2nm foundry" and calls[0]["verdict"] == "pending"
+        assert any("Your reason" in s["body"] for s in st.steps(mt["id"]))
+
+    def test_reject_with_a_reason_from_the_web(self, client, st):
+        client.post("/start")
+        r = client.post("/meetings", data={"ticker": "TSM"})
+        pid = st.proposals("pending")[0]["id"]
+        client.post(f"/proposals/{pid}/reject", data={"why": "Taiwan risk is too high for me"})
+        assert st.proposal(pid)["result"]["why"] == "Taiwan risk is too high for me"
+        assert b"Your calls" in client.get("/scorecard").data
+
+
+class TestRulesOnlyBook:
+    def test_it_must_approve_itself(self):
+        r = raw()
+        r["rules_only"] = True
+        with pytest.raises(Exception):
+            mandate.Mandate.model_validate(r)
+        r["autopilot"] = True
+        assert mandate.Mandate.model_validate(r).rules_only
+
+    def test_it_never_runs_the_ai_stages(self, st, steward, m, pf):
+        rm = m.model_copy(update={"autopilot": True, "rules_only": True})
+        events = " ".join(scan.daily(st, steward, rm, pf, agents.ScriptedBackend(), stages_on=False))
+        assert "Scout" not in events and "Portfolio meeting" not in events and not st.candidates()
+        assert "Meeting #" in events                     # but it does meet, by the rules
+
+    def test_the_web_refuses_ai_stages_and_uses_no_ai(self, st, steward, m):
+        from council import web
+        rm = m.model_copy(update={"autopilot": True, "rules_only": True})
+        app = web.create_app(store=st, steward=steward, mandate=rm, backend_factory=lambda: (_ for _ in ()).throw(
+            AssertionError("no AI here")), token="", run_async=False, book="rules")
+        c = app.test_client()
+        c.post("/start")
+        c.post("/screen")
+        assert not st.candidates()
+        assert b"Rules only" in c.get("/").data
+
+    def test_three_books_in_one_app(self, tmp_path, monkeypatch, steward):
+        from council import web
+        monkeypatch.setenv("TRADEBUNNY_HOME", str(tmp_path))
+        app = web.create_books(steward=steward)
+        c = app.test_client()
+        for url in ("/", "/autopilot/", "/rules-only/"):
+            assert c.get(url).status_code == 200, url
+
+
+def test_the_cli_parses_every_command():
+    from council import cli
+    for argv in (["research", "TSM"], ["screen"], ["watch"], ["portfolio-meeting"], ["--book", "rules", "daily"]):
+        assert cli.build_parser().parse_args(argv)

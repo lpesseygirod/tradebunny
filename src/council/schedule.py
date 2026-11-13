@@ -53,8 +53,8 @@ def _launchctl(*args: str) -> subprocess.CompletedProcess:
 
 
 def install(hour: int = 22, minute: int = 15) -> Path:
-    if paths.book() == "autopilot":
-        minute = min(59, minute + 20)        # after the main book, not at the same time
+    if paths.book() != "main":                # after the main book, one at a time
+        minute = min(59, minute + {"autopilot": 20, "rules": 40}[paths.book()])
     p = plist_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     _launchctl("unload", str(p))                   # replace an older copy cleanly

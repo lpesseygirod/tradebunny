@@ -38,14 +38,16 @@ import tempfile
 def _parts(offline: bool = False):
     from . import data, mandate, paths, portfolio, screening, store, web
     paths.load_env()
-    if paths.book() == "autopilot" and not paths.mandate_path().exists():
-        mandate.initialise()          # the autopilot book never runs on the example rules
+    if paths.book() != "main" and not paths.mandate_path().exists():
+        mandate.initialise()          # the other books never run on the example rules
     m = mandate.load()
     steward = data.Steward(snapshot=offline or os.getenv("COUNCIL_OFFLINE") == "1")
     st = store.Store()
     screening.attach(m, st)           # the scout's shortlist joins the universe
     pf = portfolio.Portfolio(st, steward, m)
-    return m, steward, st, pf, web.default_backend()
+    from . import agents
+    backend = agents.ScriptedBackend() if m.rules_only else web.default_backend()
+    return m, steward, st, pf, backend
 
 
 def cmd_init(a) -> int:
@@ -61,7 +63,8 @@ def cmd_start(a) -> int:
     if not trades:
         print("The paper portfolio is already open.")
         return 0
-    print(f"[{'Autopilot' if m.autopilot else 'With you'}] "
+    from . import paths
+    print(f"[{paths.BOOK_NAMES[paths.book()]}] "
           f"Opened with {m.start_capital_eur:,.0f} EUR. Bought {len(trades)} first tranches; "
           f"{len(st.tranches())} more are scheduled.")
     return 0
@@ -217,6 +220,10 @@ def cmd_daily(a) -> int:
         return 2
     from datetime import datetime
     print(f"TradeBunny daily run, {datetime.now():%Y-%m-%d %H:%M} ({backend.name})")
+    if m.rules_only:                  # the comparison book: rules, no AI, always meets
+        for e in scan.daily(st, steward, m, pf, None if a.no_scan else backend, stages_on=False):
+            print("-", e)
+        return 0
     meet = backend if not a.no_scan and backend.name == "claude" else None
     for e in scan.daily(st, steward, m, pf, meet):
         print("-", e)
@@ -288,12 +295,14 @@ def cmd_demo(a) -> int:
     os.environ["COUNCIL_OFFLINE"] = "1"
     os.environ.pop("ANTHROPIC_API_KEY", None)
     from .meeting import Meeting
-    for book in ("main", "autopilot"):
+    for book in ("main", "autopilot", "rules"):
         os.environ["COUNCIL_BOOK"] = book
         m, steward, st, pf, backend = _parts(offline=True)
         pf.start()
         for t in ("TSM", "ASML.AS", "HWM", "AI.PA"):
             Meeting(st, steward, m, pf, backend).run(t)
+        if m.rules_only:
+            continue
         from . import review, screening
         screening.run_screen(st, steward, m, backend)              # stage 1: the scout
         screening.research_new_ideas(st, steward, m, backend)      # stage 2: research files
@@ -310,8 +319,9 @@ def cmd_demo(a) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="council", description="TradeBunny's investment council")
-    p.add_argument("--book", choices=["main", "autopilot"], default=None,
-                   help="main waits for your OK (default); autopilot approves itself")
+    p.add_argument("--book", choices=["main", "autopilot", "rules"], default=None,
+                   help="main waits for your OK (default); autopilot approves itself; "
+                        "rules is the no-AI comparison book")
     sub = p.add_subparsers(dest="command", required=True)
     i = sub.add_parser("init")
     i.add_argument("--force", action="store_true", help="overwrite your mandate with the example")

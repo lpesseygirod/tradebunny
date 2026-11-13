@@ -32,6 +32,24 @@ Stance = Literal["supportive", "neutral", "cautious", "against"]
 POINTS = "Two to four short bullet points, at most 18 words each: the memo at a glance"
 
 
+Metric = Literal["stock_vs_index_3m", "stock_vs_index_12m", "revenue_growth_next_q", "op_margin_next_q"]
+
+
+class Prediction(BaseModel):
+    metric: Metric = Field(description="stock_vs_index_3m / _12m: the stock's return minus the MSCI World's, in "
+                                       "percentage points, 3 or 12 months from today; revenue_growth_next_q: revenue "
+                                       "growth against the same quarter a year earlier, in the next quarter reported; "
+                                       "op_margin_next_q: operating margin in the next quarter reported")
+    above: bool = Field(description="True if you forecast the value ABOVE the threshold, False if below")
+    threshold: float = Field(description="In percent or percentage points, e.g. 10 means 10%")
+    probability: int = Field(description="Your probability, 1-99, that this comes true. 50 means you have no idea")
+    why: str = Field(description="One sentence")
+
+
+FORECASTS = ("Two or three forecasts code can check later. Be calibrated, not bold: you are scored on "
+             "whether your 70% forecasts come true about 70% of the time")
+
+
 class TestResult(BaseModel):
     passes: Verdict
     evidence: str = Field(description="One or two sentences, citing a source and date where possible")
@@ -79,6 +97,7 @@ class ThesisMemo(BaseModel):
     stance: Stance
     key_points: list[str] = Field(description=POINTS)
     memo: str = Field(description="Markdown, under 250 words. Never set a price or a size.")
+    predictions: list[Prediction] = Field(description=FORECASTS)
 
 
 class ValuationMemo(BaseModel):
@@ -91,6 +110,7 @@ class ValuationMemo(BaseModel):
     stance: Stance
     key_points: list[str] = Field(description=POINTS)
     memo: str = Field(description="Markdown, under 200 words. Cite only fact-sheet numbers.")
+    predictions: list[Prediction] = Field(description=FORECASTS)
 
 
 class EarningsMemo(BaseModel):
@@ -102,6 +122,7 @@ class EarningsMemo(BaseModel):
     thesis_check: str = Field(description="Does this quarter support or weaken the thesis on file? One or two sentences")
     stance: Stance
     key_points: list[str] = Field(description=POINTS)
+    predictions: list[Prediction] = Field(description=FORECASTS)
     memo: str = Field(description="Markdown, under 200 words. Never set a price or a size.")
 
 
@@ -122,6 +143,7 @@ class Premortem(BaseModel):
     story: str = Field(description="Markdown: it is two years from now and this lost 40%. Why?")
     what_would_prove_the_bear_right: list[str]
     key_points: list[str] = Field(description=POINTS + ", each a cause of the loss")
+    predictions: list[Prediction] = Field(description=FORECASTS)
 
 
 class Objections(BaseModel):
@@ -194,6 +216,10 @@ def tidy(out: BaseModel) -> BaseModel:
     over-long answer is trimmed instead of failing the whole meeting."""
     if hasattr(out, "key_points"):
         out.key_points = [p for p in out.key_points if p.strip()][:4]
+    if hasattr(out, "predictions"):
+        out.predictions = out.predictions[:3]
+        for pr in out.predictions:
+            pr.probability = _clamp(pr.probability, 1, 99)
     if isinstance(out, MacroMemo):
         for k in ScenarioOdds.model_fields:
             setattr(out.scenario_odds, k, _clamp(getattr(out.scenario_odds, k), 0, 100))
@@ -246,13 +272,17 @@ ROLES: dict[str, Role] = {r.key: r for r in [
          "You are the thesis analyst. The council buys chokepoints: 'whoever wins, "
          "they must buy from this company'. Run the five-point business test (few "
          "suppliers; slow to replace; small cost but critical; material to revenue; "
-         "self-funded) with evidence from this round only. A point you cannot "
-         "reconfirm is 'unclear'. Write falsifiable thesis breakers. Never set a "
+         "self-funded) with evidence from this round only; the quant desk's "
+         "free-cash-flow margin, net debt and return on capital are your starting "
+         "point for 'self-funded'. A point you cannot reconfirm is 'unclear'. Write falsifiable thesis breakers. Never set a "
          "price or a position size. " + GUARD),
     Role("valuation", "Valuation analyst", "VA", OPUS, True,
          "You are the valuation analyst. Your question: is it already priced in? "
-         "Compare the forward P/E with the company's own 5-year average and its "
-         "peers, and say how it does if rates stay high (high multiples lose then). "
+         "Start from the quant desk: P/E against the company's own history, the "
+         "peers, and the reverse DCF (the growth the price assumes). Say whether "
+         "that implied growth is realistic against the company's actual growth, and "
+         "how it does if rates stay high (high multiples lose then). Note any big gap "
+         "between the forward and trailing P/E: it is a forecast of recovery. "
          "Cite the fact sheet for the current price and multiple, and cite your "
          "research notes, with source and date, for history and peers. A number "
          "with no source is your judgment and must be labelled as such. " + GUARD),
@@ -279,7 +309,8 @@ ROLES: dict[str, Role] = {r.key: r for r in [
          "the priority. " + GUARD),
     Role("risk", "Risk officer", "RO", OPUS, False,
          "You are the risk officer. Hard limits are enforced by code, not by you; "
-         "you explain exposure in words: which holdings are the same bet, what each "
+         "you explain exposure in words: which holdings are the same bet (use the "
+         "quant desk's beta, volatility and correlation with our portfolio), what each "
          "of the five scenarios does to the whole portfolio, whether this adds a new "
          "source of return. You may recommend stricter action or escalate to the "
          "principal; you can never loosen a limit. " + GUARD),
@@ -363,7 +394,22 @@ class ClaudeBackend:
         self.effort = effort
         self.searches = searches
 
-    def _research(self, role: Role, prompt: str) -> tuple[str, list[Source], float]:
+    @staticmethod
+    def split(role: Role, prompt: str, context: dict):
+        """Put the shared fact sheet first, in a cached system block, so every
+        member reuses it instead of paying to read it again. The role's own
+        instructions come after it."""
+        shared = context.get("shared")
+        if not shared or not prompt.startswith(shared):
+            return role.system, prompt
+        system = [{"type": "text", "cache_control": {"type": "ephemeral"},
+                   "text": "You are one member of a small investment council. Every member reads the same "
+                           "fact sheet, below.\n\n" + shared},
+                  {"type": "text", "text": role.system}]
+        rest = prompt[len(shared):].lstrip() or "Go ahead."
+        return system, "(The fact sheet is in your instructions.)\n\n" + rest
+
+    def _research(self, role: Role, prompt: str, system=None) -> tuple[str, list[Source], float]:
         messages = [{"role": "user", "content": prompt + (
             "\n\nFirst, research. Search the web for the most recent, dated, primary "
             "evidence relevant to your role (results, filings, guidance, prices). "
@@ -372,7 +418,7 @@ class ClaudeBackend:
         notes, sources, cost = [], [], 0.0
         for _ in range(3):          # pause_turn: the server may stop mid-research
             r = self.client.beta.messages.create(
-                model=role.model, max_tokens=16000, system=role.system,
+                model=role.model, max_tokens=16000, system=system or role.system,
                 betas=self.BETAS, fallbacks="default",
                 output_config={"effort": self.effort},
                 tools=[{"type": "web_search_20260209", "name": "web_search",
@@ -397,11 +443,12 @@ class ClaudeBackend:
 
     def run(self, role: Role, prompt: str, schema: type[BaseModel], context: dict) -> Result:
         research, sources, cost = "", [], 0.0
+        system, prompt = self.split(role, prompt, context)
         if role.web and context.get("research", True):
-            research, sources, cost = self._research(role, prompt)
+            research, sources, cost = self._research(role, prompt, system)
             prompt += "\n\n## Your research notes (this round)\n" + research
         r = self.client.beta.messages.parse(
-            model=role.model, max_tokens=16000, system=role.system,
+            model=role.model, max_tokens=16000, system=system,
             betas=self.BETAS, fallbacks="default",
             output_config={"effort": self.effort},
             output_format=schema,
@@ -460,7 +507,7 @@ class ScriptedBackend:
             key_points=[x for x in [prior.get("thesis"), prior.get("trigger") and "Trigger: " + prior["trigger"],
                                     f"Grade {g or 'none'} on file from the October review."] if x][:3],
             memo="Scripted: this restates the committee's last view. A real meeting re-checks "
-                 "every point against this round's evidence.")
+                 "every point against this round's evidence.", predictions=[])
 
     def _valuation(self, c: dict) -> ValuationMemo:
         q = c["quote"]
@@ -484,7 +531,7 @@ class ScriptedBackend:
             key_points=[f"Forward P/E {pe:.1f} on the fact sheet." if pe else "No forward P/E on the fact sheet.",
                         f"Entry rule: {fair}.", f"Priced in: {priced}."],
             memo=f"Forward P/E **{pe:.1f}** from the fact sheet. Entry rule: {fair}." if pe
-                 else f"No forward P/E in the fact sheet. Entry rule: {fair}.")
+                 else f"No forward P/E in the fact sheet. Entry rule: {fair}.", predictions=[])
 
     def _earnings(self, c: dict) -> EarningsMemo:
         return EarningsMemo(
@@ -496,7 +543,7 @@ class ScriptedBackend:
             key_points=["Scripted: the latest results were not read.",
                         "With an AI key this member reads the release, guidance and call."],
             memo="Scripted earnings memo: no results were read. A real meeting checks the latest "
-                 "quarter against the thesis.")
+                 "quarter against the thesis.", predictions=[])
 
     def _vote(self, c: dict) -> Vote:
         g = ((c.get("prior") or {}).get("grade") or "").upper()
@@ -525,7 +572,7 @@ class ScriptedBackend:
             story=f"Two years on, {c['name']} is down 40% because: {breakers[0].lower()}. "
                   "(Scripted from the committee's thesis breakers.)",
             what_would_prove_the_bear_right=breakers,
-            key_points=breakers[:3])
+            key_points=breakers[:3], predictions=[])
 
     def _objections(self, c: dict) -> Objections:
         breakers = (c.get("prior") or {}).get("breakers") or []

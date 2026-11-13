@@ -91,15 +91,16 @@ def expire(store: Store) -> int:
 
 def reject(store: Store, pid: int, why: str = "") -> dict:
     p = store.proposal(pid)
-    if not p or not store.decide_proposal(pid, "rejected", {"why": why}):
+    if not p or not store.decide_proposal(pid, "rejected", {"why": why.strip()[:300], "by": "you"}):
         raise ApprovalError("This proposal is no longer waiting for an answer.")
     if p["meeting_id"]:
         store.add_step(p["meeting_id"], "approval", "you", "You said no",
-                       why or "Proposal rejected. Nothing was traded.")
+                       (f"**Your reason:** {why.strip()[:300]}\n\n" if why.strip() else "")
+                       + "Proposal rejected. Nothing was traded.")
     return {"status": "rejected"}
 
 
-def approve(store: Store, pf: Portfolio, m: Mandate, pid: int, by: str = "you") -> dict:
+def approve(store: Store, pf: Portfolio, m: Mandate, pid: int, by: str = "you", why: str = "") -> dict:
     """Re-check every rule now, then trade. Raises ApprovalError if it cannot."""
     expire(store)
     p = store.proposal(pid)
@@ -140,12 +141,14 @@ def approve(store: Store, pf: Portfolio, m: Mandate, pid: int, by: str = "you") 
     planned = [x for x in store.tranches("planned")
                if p["meeting_id"] and x["meeting_id"] == p["meeting_id"]]
     result = {"trades": trades, "planned": planned}
-    store.decide_proposal(pid, "approved", {**result, "by": by})
+    store.decide_proposal(pid, "approved", {**result, "by": by, "why": why.strip()[:300]})
     if p["meeting_id"]:
         body = "\n".join(f"- {t['side'].upper()} {t['qty']:.4f} {t['ticker']} at {t['price']:,.2f} "
                          f"{t['currency']} = €{t['amount_eur']:,.2f} (fee €{t['fee_eur']:.2f}, "
                          f"{t.get('broker', 'paper')})" for t in trades)
         body += "".join(f"\n- Planned: {x['note']} on {x['due']}, €{x['amount_eur']:,.2f}" for x in planned)
+        if why.strip():
+            body = f"**Your reason:** {why.strip()[:300]}\n\n" + body
         store.add_step(p["meeting_id"], "approval", by,
                        "You approved" if by == "you" else "Approved by the autopilot", body,
                        {"proposal": pid, "trades": trades, "planned": planned})

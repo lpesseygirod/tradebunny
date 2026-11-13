@@ -144,6 +144,22 @@ CREATE TABLE IF NOT EXISTS alerts (
     meeting_id INTEGER,              -- the review it escalated to
     data TEXT
 );
+CREATE TABLE IF NOT EXISTS predictions (
+    id INTEGER PRIMARY KEY,
+    meeting_id INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    ticker TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    above INTEGER NOT NULL,
+    threshold REAL NOT NULL,
+    probability INTEGER NOT NULL,     -- 1-99
+    why TEXT DEFAULT '',
+    made_on TEXT NOT NULL,            -- YYYY-MM-DD
+    status TEXT NOT NULL DEFAULT 'open',   -- open | hit | miss | void
+    actual REAL,
+    resolved_on TEXT,
+    note TEXT DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -502,6 +518,31 @@ class Store:
             sql, args = sql + " WHERE ticker=?", (ticker,)
         with self._conn() as c:
             return [self._row(r) for r in c.execute(sql + " ORDER BY id DESC LIMIT ?", (*args, limit)).fetchall()]
+
+    # ---------------------------------------------------------- predictions
+
+    def add_prediction(self, **p: Any) -> int:
+        p.setdefault("made_on", now()[:10])
+        cols = ",".join(p)
+        with self._conn() as c:
+            cur = c.execute(f"INSERT INTO predictions({cols}) VALUES({','.join('?' * len(p))})", tuple(p.values()))
+            return int(cur.lastrowid)
+
+    def predictions(self, status: Optional[str] = None, meeting_id: Optional[int] = None) -> list[dict]:
+        sql, args, where = "SELECT * FROM predictions", [], []
+        if status:
+            where.append("status=?"); args.append(status)
+        if meeting_id is not None:
+            where.append("meeting_id=?"); args.append(meeting_id)
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        with self._conn() as c:
+            return [dict(r) for r in c.execute(sql + " ORDER BY id DESC", args).fetchall()]
+
+    def resolve_prediction(self, pid: int, status: str, actual: Optional[float], note: str = "") -> None:
+        with self._conn() as c:
+            c.execute("UPDATE predictions SET status=?, actual=?, resolved_on=?, note=? WHERE id=? AND status='open'",
+                      (status, actual, now()[:10], note, pid))
 
     # ----------------------------------------------------------- snapshots
 
