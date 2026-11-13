@@ -42,6 +42,14 @@ class Quote:
     low_52w: Optional[float] = None
     source: str = "Yahoo Finance"
     as_of: str = ""                  # ISO time the number was fetched
+    prev_close: Optional[float] = None   # yesterday's close, listing currency
+
+    @property
+    def change_1d(self) -> Optional[float]:
+        """Today's move against yesterday's close (-0.12 = down 12%)."""
+        if not self.prev_close:
+            return None
+        return self.price / self.prev_close - 1.0
 
     @property
     def from_high(self) -> Optional[float]:
@@ -161,7 +169,7 @@ class Steward:
             forward_pe=_num(info.get("forwardPE")),
             trailing_pe=_num(info.get("trailingPE")),
             high_52w=_num(fi.get("yearHigh")), low_52w=_num(fi.get("yearLow")),
-            as_of=_now())
+            prev_close=_num(fi.get("previousClose")), as_of=_now())
 
     def quote(self, ticker: str) -> Quote:
         return self.quotes([ticker])[ticker]
@@ -222,6 +230,21 @@ class Steward:
         out.sort(key=lambda n: n["date"], reverse=True)
         self._news[ticker] = (time.time(), out)
         return out[:limit]
+
+    def earnings_dates(self, ticker: str) -> list[str]:
+        """Recent and upcoming results dates (YYYY-MM-DD), newest first.
+        Empty offline or on error: a missing calendar never stops the run."""
+        if self.snapshot:
+            return []
+        try:
+            import yfinance as yf
+            df = yf.Ticker(ticker).get_earnings_dates(limit=8)
+            if df is None:
+                return []
+            days = sorted({str(ix)[:10] for ix in df.index}, reverse=True)
+            return [d for d in days if len(d) == 10]
+        except Exception:
+            return []
 
     def last_update(self) -> str:
         """When the newest number in hand was fetched (ISO), for the header."""

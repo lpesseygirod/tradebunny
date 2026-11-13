@@ -177,7 +177,7 @@ AUDITOR = Role(
 def _record_text(store: Store, mid: int) -> str:
     parts = []
     for s in store.steps(mid):
-        if s["phase"] in ("blind", "cross", "committee"):
+        if s["phase"] in ("blind", "cross", "committee", "vote"):
             out = (s.get("data") or {}).get("output")
             parts.append(f"### {ROLES.get(s['role'], AUDITOR).title}: {s['title']}\n"
                          + json.dumps(out, indent=1, ensure_ascii=False))

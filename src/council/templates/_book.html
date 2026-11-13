@@ -1,0 +1,119 @@
+{% macro avatar(role) -%}{% set st = ROLE_STYLE[role] %}<span class="av c-{{ st[2] }}">{{ st[1] }}</span>{%- endmacro %}
+
+<section class="card steps">
+  {% for s in stepper %}
+  <div class="step {{ s.state }}">
+    <span class="c">{{ '✓' if s.state == 'done' else loop.index }}</span>
+    <div><b>{{ s.label }}</b><small>{{ s.sub }}</small></div>
+  </div>
+  {% endfor %}
+</section>
+
+{% if mt.backend == 'scripted' %}
+<div class="notice">Scripted meeting: no AI was used. Holdings are ranked by the grade on file, and the scenario moves are
+  rules of thumb computed from the weights. Set <code>ANTHROPIC_API_KEY</code> for a real review of the whole book.</div>
+{% endif %}
+{% for s in stopped %}<section class="card mt"><h3>{{ s.title }}</h3><p class="muted">{{ s.body }}</p></section>{% endfor %}
+
+{% if facts %}
+<div class="round"><h2>The whole book</h2><span class="muted">Every other meeting looks at one stock. This one asks: is each holding still the best use of its place?</span></div>
+<div class="grid g4">
+  <section class="card"><div class="eyebrow">Single stocks</div><div class="display num" style="font-size:1.8rem;margin:8px 0 4px">{{ facts.stock_count }} / {{ facts.max_stocks }}</div>
+    <div class="small muted">{{ 'Full: a new name needs a swap' if facts.stock_count >= facts.max_stocks else 'Room for a new name' }}</div></section>
+  <section class="card"><div class="eyebrow">AI-linked</div><div class="display num" style="font-size:1.8rem;margin:8px 0 4px">{{ facts.ai_weight|pct }}</div>
+    <div class="small muted">of a {{ facts.ai_cap|pct(0) }} cap, tranches included</div></section>
+  <section class="card"><div class="eyebrow">The bench</div><div class="display num" style="font-size:1.8rem;margin:8px 0 4px">{{ facts.bench|length }}</div>
+    <div class="small muted">committee buys blocked only by the stock limit</div></section>
+  <section class="card"><div class="eyebrow">Shortlist</div><div class="display num" style="font-size:1.8rem;margin:8px 0 4px">{{ facts.shortlist|length }}</div>
+    <div class="small muted">scout ideas not yet graded</div></section>
+</div>
+{% endif %}
+
+{% if risk %}
+<div class="grid g2 mt">
+  <section class="card">
+    <div class="who" style="margin-bottom:10px">{{ avatar('risk') }}<div><h2 style="font-size:1.3rem">Risk officer · the whole portfolio</h2><small>Concentration, and what each world does to everything we own</small></div></div>
+    <p>{{ risk.concentration }}</p>
+    {% if risk.same_bets %}<h3>Really one bet</h3><ul class="small">{% for b in risk.same_bets %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
+    <p class="small"><b>Weakest link:</b> {{ risk.weakest_link }}</p>
+    <p class="tiny muted">Weights include tranches still planned.</p>
+    <details><summary>Full memo</summary><div class="md small">{{ risk_body|md|safe }}</div></details>
+  </section>
+  <section class="card">
+    <h2 style="margin-bottom:10px">The portfolio in each world</h2>
+    {% if scen %}<div class="table-wrap"><table>
+      <tr><th>World</th><th class="r">Portfolio</th><th style="width:45%"></th></tr>
+      {% for r in scen %}<tr><td><b>{{ r.name }}</b></td>
+        <td class="r num {{ 'up' if r.move > 0 else 'down' if r.move < 0 }}">{{ '+' if r.move > 0 else ('−' if r.move < 0 else '') }}{{ r.move|abs }}%</td>
+        <td><div class="track impact"><i class="{{ 'green' if r.move > 0 else 'red' }}" style="width:{{ r.width }}%"></i></div></td></tr>{% endfor %}
+    </table></div>
+    <p class="tiny muted">The risk officer's estimates for the whole portfolio over 12 months.</p>{% endif %}
+  </section>
+</div>
+{% elif running %}<div class="thinking"><i></i>The risk officer is reading the whole book…</div>{% endif %}
+
+{% if red %}
+<section class="card mt">
+  <div class="who" style="margin-bottom:10px">{{ avatar('redteam') }}<div><h2 style="font-size:1.3rem">Red team · the weakest holdings</h2><small>Who should have to defend their place</small></div></div>
+  <ol>{% for w in red.weakest %}<li><b>{{ mandate.name_of(w.ticker) }}</b> <span class="small muted">{{ w.why }}</span></li>{% endfor %}</ol>
+  <p class="small"><b>Best name we do not own:</b> {{ red.best_outside }}</p>
+</section>
+{% elif running and risk %}<div class="thinking"><i></i>The red team is looking for the weakest holdings…</div>{% endif %}
+
+{% if cio %}
+<section class="card mt">
+  <div class="card-head"><div class="who">{{ avatar('cio') }}<div><h2 style="font-size:1.3rem">CIO · every holding ranked</h2><small>Strongest first. Keep, review or replace.</small></div></div></div>
+  <div class="table-wrap"><table>
+    <tr><th>#</th><th>Holding</th><th class="r" title="Including tranches still planned">Weight</th><th class="r">Since bought</th><th>Grade</th><th>Verdict</th><th>Why</th></tr>
+    {% for r in ranking %}<tr><td class="muted">{{ loop.index }}</td>
+      <td><a class="stock" href="{{ url_for('stock_page', ticker=r.ticker) }}">{{ r.name }}</a>{% if r.ai %} <span class="tiny muted">AI</span>{% endif %}</td>
+      <td class="r num">{{ r.weight|pct if r.weight is not none else '—' }}</td>
+      <td class="r num {{ 'up' if (r.gain or 0) > 0 else 'down' if (r.gain or 0) < 0 }}">{{ r.gain|pct(1, True) if r.gain is not none else '—' }}</td>
+      <td>{% if r.grade in ('A','B','C','D') %}<span class="grade {{ r.grade }}">{{ r.grade }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+      <td><span class="pill {{ {'keep':'ok','review':'watch','replace':'sell'}[r.verdict] }}">{{ r.verdict|capitalize }}</span></td>
+      <td class="small">{{ r.reason }}</td></tr>{% endfor %}
+  </table></div>
+  <div class="md small" style="margin-top:12px">{{ cio_body|md|safe }}</div>
+  {% if cio.swap_sell or cio.swap_buy %}<p><b>Swap asked for:</b> sell {{ mandate.name_of(cio.swap_sell) if cio.swap_sell else '–' }}, buy {{ mandate.name_of(cio.swap_buy) if cio.swap_buy else '–' }}. {{ cio.swap_reason }}</p>{% endif %}
+</section>
+{% elif running and red %}<div class="thinking"><i></i>The CIO is ranking the book…</div>{% endif %}
+
+{% if rules %}
+<div class="grid g2 mt">
+  <section class="card">
+    <div class="card-head"><h2>Swap rules</h2><span class="mono tiny muted">plain code</span></div>
+    <ul class="checks">
+      {% for c in rules.checks %}<li><span class="{{ 't' if c.ok else 'x' }}">{{ '✓' if c.ok else '✗' }}</span>
+        <span title="{{ c.detail }}">{{ c.name }}<div class="tiny muted">{{ c.detail }}</div></span><span class="v">{{ c.value }}</span></li>{% endfor %}
+    </ul>
+    <div class="allowed {{ '' if rules.proposal else 'none' }}">{{ rules.summary }}</div>
+  </section>
+  <section class="card">
+    <h2 style="margin-bottom:10px">Next for the committee</h2>
+    {% if rules.review_queue %}<ul class="rows">{% for q in rules.review_queue %}
+      <li><a class="stock" href="{{ url_for('stock_page', ticker=q.ticker) }}">{{ mandate.name_of(q.ticker) }}</a><span class="grow small muted">{{ q.why }}</span></li>{% endfor %}</ul>
+      <p class="tiny muted">They join the agenda as holding reviews, within the month's review slots.</p>
+    {% else %}<p class="muted">No holding sent back for review.</p>{% endif %}
+    {% if proposal %}
+    <div class="approve-box" id="approve" style="margin-top:14px">
+      {% if proposal.status == 'pending' %}
+        <div class="eyebrow" style="color:var(--accent)">Waiting for your OK</div>
+        <p><b>{{ proposal.summary }}.</b> Approving re-checks both halves at today's prices before anything is sold.</p>
+        <div class="row">
+          <form method="post" action="{{ url_for('approve', pid=proposal.id) }}"><input type="hidden" name="next" value="{{ url_for('meeting_page', mid=mt.id) }}#approve"><button class="btn accent sm">Approve</button></form>
+          <form method="post" action="{{ url_for('reject', pid=proposal.id) }}"><input type="hidden" name="next" value="{{ url_for('meeting_page', mid=mt.id) }}#approve"><button class="btn light sm">Reject</button></form>
+        </div>
+      {% else %}
+        <p><b>{{ {'approved':'Approved','rejected':'You said no','expired':'Expired without an answer','failed':'Approved, but not placed'}[proposal.status] }}</b>
+          {% if proposal.result and proposal.result.by == 'autopilot' %}by the autopilot{% endif %}</p>
+      {% endif %}
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endif %}
+
+{% if facts_body %}
+<details class="card mt" style="margin-top:20px"><summary>The book as every member saw it</summary>
+  <pre class="small mono" style="white-space:pre-wrap;margin-top:12px">{{ facts_body }}</pre></details>
+{% endif %}

@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Pipeline · TradeBunny{% endblock %}
+{% block content %}
+{% macro avatar(role) -%}{% set st = ROLE_STYLE[role] %}<span class="av c-{{ st[2] }}">{{ st[1] }}</span>{%- endmacro %}
+<div class="page-head">
+  <div>
+    <h1>From idea to trade</h1>
+    <p>Five stages, like a real fund: many ideas go in at the top, few reach the committee, fewer reach your OK.
+      The evening job runs them in order; the buttons run one now.</p>
+  </div>
+</div>
+{% if busy %}<div class="notice"><span class="thinking" style="display:inline-flex;margin:0"><i></i></span> Working now: {{ busy }}. Refresh in a minute.</div>{% endif %}
+
+<section class="funnel">
+  <a href="#scout" class="stage"><span class="n">1</span><b>Scout</b><small>{{ p.candidates|length }} idea{{ 's' if p.candidates|length != 1 }} found</small></a>
+  <a href="#research" class="stage"><span class="n">2</span><b>Research file</b><small>{{ p.dossiers|length }} written · {{ p.research_left }} left this week</small></a>
+  <a href="#committee" class="stage"><span class="n">3</span><b>Committee</b><small>{{ p.slots.used }} / {{ p.slots.cap }} idea meetings · {{ p.holding_used }} reviews</small></a>
+  <a href="#ok" class="stage"><span class="n">4</span><b>Your OK</b><small>{{ p.pending|length }} waiting</small></a>
+  <a href="#watch" class="stage"><span class="n">5</span><b>Watch</b><small>{{ p.alerts|length }} alert{{ 's' if p.alerts|length != 1 }}</small></a>
+</section>
+
+{# ---------------------------------------------------------------- 1 scout #}
+<section class="card mt" id="scout">
+  <div class="card-head">
+    <div class="who">{{ avatar('scout') }}<div><h2>1 · The scout</h2>
+      <small>Once every {{ mandate.limits.screen_every_days }} days it looks beyond the watch list for chokepoints, up to {{ mandate.limits.max_new_ideas }} new names. Code checks each has a real price and isn't already held, watched or rejected.</small></div></div>
+    <form method="post" action="{{ url_for('run_screen') }}"><button class="btn dark sm" {{ 'disabled' if busy }}>Run the scout now</button></form>
+  </div>
+  <p class="small muted">{% if p.last_screen %}Last look {{ p.last_screen.at|stamp }} ({{ p.last_screen.backend }}){% if p.next_screen %} · next {{ p.next_screen }}{% endif %}.
+    {% if p.last_screen.error %}<span class="down">It failed: {{ p.last_screen.error }}</span>{% endif %}
+    {% else %}The scout has not looked yet: the evening job sends it once the AI key is in, or press the button.{% endif %}</p>
+  {% if p.last_screen and p.last_screen.turned_away %}<p class="tiny muted">Turned away by code: {% for x in p.last_screen.turned_away %}{{ x.name }} ({{ x.why }}){{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
+  {% if p.candidates %}
+  <div class="table-wrap"><table>
+    <tr><th>Idea</th><th>Why it might be a chokepoint</th><th>Found</th><th>Status</th><th>Research file</th><th></th></tr>
+    {% for c in p.candidates %}<tr>
+      <td><a class="stock" href="{{ url_for('stock_page', ticker=c.ticker) }}">{{ c.name }}</a><div class="tiny muted">{{ c.ticker }} · {{ c.theme }}</div></td>
+      <td class="small">{{ c.why }}{% if c.question %}<div class="tiny muted">Open question: {{ c.question }}</div>{% endif %}</td>
+      <td class="small" style="white-space:nowrap">{{ c.found }}</td>
+      <td><span class="pill {{ c.cls }}">{{ c.label }}</span>{% if c.meeting %}<div class="tiny"><a class="link" href="{{ url_for('meeting_page', mid=c.meeting.id) }}">meeting #{{ c.meeting.id }}</a></div>{% endif %}</td>
+      <td class="small">{% if c.dossier %}<a class="link" href="{{ url_for('research_page', did=c.dossier.id) }}">{{ c.dossier.created_at|day }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td>{% if c.status != 'dropped' %}<form method="post" action="{{ url_for('drop_candidate', ticker=c.ticker) }}"><button class="btn light sm" title="Take it off the list">Drop</button></form>{% endif %}</td>
+    </tr>{% endfor %}
+  </table></div>
+  <p class="tiny muted">A research file that says "send to the committee" shortlists the idea: it can then be debated like a watch-list name. {{ p.n_short }} shortlisted now.{% if p.candidates and p.candidates[0].backend == 'scripted' %} Ideas marked by the scripted scout are well-known names, not research.{% endif %}</p>
+  {% endif %}
+</section>
+
+{# ------------------------------------------------------------- 2 research #}
+<section class="card mt" id="research">
+  <div class="card-head">
+    <div class="who">{{ avatar('analyst') }}<div><h2>2 · Research files</h2>
+      <small>The homework: how it makes money, the five-point test, financials, management, competition, risks, with sources. Every committee member reads it before a meeting. Rewritten after {{ mandate.limits.research_refresh_days }} days.</small></div></div>
+    <form method="post" action="{{ url_for('run_research') }}" class="row" style="gap:8px">
+      <select name="ticker" class="input sm">
+        {% for c in p.candidates if c.status != 'dropped' %}<option value="{{ c.ticker }}">{{ c.name }} (idea)</option>{% endfor %}
+        {% for t, n in p.universe %}<option value="{{ t }}">{{ n }}</option>{% endfor %}
+      </select>
+      <button class="btn dark sm" {{ 'disabled' if busy or not p.research_left }}>Write a file</button></form>
+  </div>
+  <p class="small muted">{{ p.research_left }} of {{ mandate.limits.max_research_files_per_week }} files left this week. The evening job writes them for new ideas and before a meeting on a name with no recent file.</p>
+  {% if p.dossiers %}
+  <ul class="rows">
+    {% for d in p.dossiers %}<li style="align-items:flex-start">
+      <span class="small muted" style="width:56px;flex:0 0 56px">{{ d.date }}</span>
+      <div class="grow"><a href="{{ url_for('research_page', did=d.id) }}" style="color:var(--ink)"><b>{{ d.name }}</b></a>
+        <span class="tiny muted">· {{ d.reason }}{% if d.backend == 'scripted' %} · scripted{% endif %}{% if d.cost %} · ${{ '%.2f'|format(d.cost) }}{% endif %}</span>
+        {% if d.summary %}<div class="small muted">{{ d.summary }}</div>{% endif %}</div>
+      <span class="pill {{ d.cls }}">{{ 'Writing…' if d.status == 'running' else d.label }}</span></li>{% endfor %}
+  </ul>
+  {% else %}<p class="muted">No research files yet.</p>{% endif %}
+</section>
+
+{# ------------------------------------------------------------ 3 committee #}
+<section class="card mt" id="committee">
+  <div class="card-head">
+    <div class="who">{{ avatar('cio') }}<div><h2>3 · The committee</h2>
+      <small>The full debate on one stock: five blind memos (macro, thesis, valuation, the latest results, the red team's pre-mortem), cross-examination, fact check, risk, a vote, then the CIO's verdict.</small></div></div>
+    <form method="post" action="{{ url_for('run_scan') }}"><button class="btn dark sm">Let the council meet</button></form>
+  </div>
+  <h3>On the agenda now</h3>
+  <ul class="rows">
+    {% for c in p.agenda.picked %}<li><span class="pill {{ 'sell' if c.rank < 0 else 'hit' if c.rank <= 1 else 'notyet' }}">{{ 'Urgent' if c.rank < 0 else 'Idea' if c.kind == 'idea' else 'Review' }}</span>
+      <span class="grow"><b>{{ c.name }}</b> <span class="small muted">{{ c.reason }}</span></span></li>
+    {% else %}<li class="muted">Nothing on the agenda: no trigger hit, no idea shortlisted, no review due.</li>{% endfor %}
+  </ul>
+  {% if p.agenda.skipped %}<details><summary class="small">{{ p.agenda.skipped|length }} not on it, and why</summary><ul class="small">
+    {% for s in p.agenda.skipped %}<li><b>{{ s.name }}</b>: {{ s.why }}</li>{% endfor %}</ul></details>{% endif %}
+  <h3 style="margin-top:18px">The monthly portfolio meeting</h3>
+  <div class="row" style="justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
+    <p class="small" style="max-width:640px;margin:0">With the portfolio full (10 of 10 stocks), a new name only makes sense if it beats one we own.
+      Once a month the risk officer, the red team and the CIO look at the whole book, rank every holding, and may propose <b>one swap</b>:
+      sell a holding the committee marked down (grade C or D, or a thesis breaker) to buy a name the committee wanted but the limit blocked.
+      {{ 'Due this month.' if p.portfolio_due else 'Done this month.' }}</p>
+    <form method="post" action="{{ url_for('run_portfolio_meeting') }}"><button class="btn light sm">Hold it now</button></form>
+  </div>
+  {% if p.portfolio_meetings %}<ul class="rows" style="margin-top:8px">{% for r in p.portfolio_meetings %}
+    <li><span class="small muted" style="width:56px">{{ r.date }}</span><span class="grow"><a href="{{ url_for('meeting_page', mid=r.id) }}" style="color:var(--ink)"><b>Portfolio meeting #{{ r.id }}</b></a>
+      <span class="small muted">{{ r.sub }}</span></span><span class="pill {{ r.cls }}">{{ r.label }}</span></li>{% endfor %}</ul>{% endif %}
+  {% if p.queue %}<p class="small" style="margin-top:8px"><b>Sent back for review:</b> {% for q in p.queue %}{{ mandate.name_of(q.ticker) }}{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
+</section>
+
+{# ------------------------------------------------------------------ 4 ok #}
+<section class="card mt" id="ok">
+  <div class="who" style="margin-bottom:8px">{{ avatar('autopilot' if autopilot else 'you') }}<div><h2>4 · {{ 'The autopilot approves' if autopilot else 'Your OK' }}</h2>
+    <small>{{ 'This book approves its own proposals; the rules are still re-checked before every order.' if autopilot else 'Nothing trades until you approve. Approving re-checks every rule at today\'s price.' }}</small></div></div>
+  <ul class="rows">
+    {% for x in p.pending %}<li><span class="grow"><b>{{ x.summary }}</b> <span class="small muted">{{ x.expires }}</span></span>
+      <form method="post" action="{{ url_for('reject', pid=x.id) }}"><input type="hidden" name="next" value="{{ url_for('pipeline') }}#ok"><button class="btn light sm">Reject</button></form>
+      <form method="post" action="{{ url_for('approve', pid=x.id) }}"><input type="hidden" name="next" value="{{ url_for('pipeline') }}#ok"><button class="btn accent sm">Approve</button></form></li>
+    {% else %}<li class="muted">Nothing waiting.</li>{% endfor %}
+  </ul>
+</section>
+
+{# --------------------------------------------------------------- 5 watch #}
+<section class="card mt" id="watch">
+  <div class="who" style="margin-bottom:8px">{{ avatar('sentinel') }}<div><h2>5 · Watching what we own</h2>
+    <small>Every evening: did a holding report results, or fall {{ (mandate.limits.big_drop * 100)|round|int }}% or more in a day? The sentinel finds out why and checks the thesis breakers.
+      Noise is noted; a possible broken thesis calls an urgent committee review. A price drop alone never sells.</small></div></div>
+  <ul class="rows">
+    {% for a in p.alerts %}<li style="align-items:flex-start">
+      <span class="small muted" style="width:56px;flex:0 0 56px">{{ a.date }}</span>
+      <div class="grow"><a class="stock" href="{{ url_for('stock_page', ticker=a.ticker) }}">{{ a.name }}</a> <span class="small">{{ a.reason }}</span>
+        {% if a.what %}<div class="small muted">{{ a.what }}</div>{% endif %}
+        {% if a.breaker %}<div class="small"><b>Breaker named:</b> {{ a.breaker }}</div>{% endif %}
+        {% if a.meeting_id %}<div class="tiny"><a class="link" href="{{ url_for('meeting_page', mid=a.meeting_id) }}">urgent review #{{ a.meeting_id }}</a></div>{% endif %}</div>
+      <span class="pill {{ a.cls }}">{{ a.label }}</span></li>
+    {% else %}<li class="muted">No alerts yet. {{ 'Checked every evening with live prices.' if data_mode == 'live' else 'The demo uses saved prices, so nothing moves.' }}</li>{% endfor %}
+  </ul>
+</section>
+{% endblock %}
+{% block footer %}Every stage costs AI money only when it runs; the limits on the Rules page keep it small.{% endblock %}

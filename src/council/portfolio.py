@@ -235,7 +235,7 @@ class Portfolio:
 
     def watch_status(self, quotes: dict) -> list[dict]:
         out = []
-        for w in self.m.watchlist:
+        for w in self.m.all_watch():
             q = quotes.get(w.ticker)
             hit, why = False, w.event or "no price trigger"
             if q and w.trigger_pe and q.forward_pe:

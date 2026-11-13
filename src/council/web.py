@@ -4,6 +4,8 @@
     /meetings/<id>    Meeting: one debate, round by round, live while it runs
     /meetings         Meetings: what has the council decided?
     /portfolio        Portfolio: what do I own?
+    /pipeline         Pipeline: the five stages, from the scout to the watch
+    /research/<id>    one research file
     /rules            Rules: what can't happen?
 
 Binds to 127.0.0.1. If COUNCIL_WEB_TOKEN is set, every action (convening a
@@ -16,23 +18,29 @@ import html
 import os
 import re
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from flask import (Flask, abort, flash, jsonify, redirect, render_template,
                    request, session, url_for)
 
-from . import agents, approvals, learning, mandate as mandate_mod, paths, risk, scan, views
+from . import (agents, approvals, learning, mandate as mandate_mod, paths, risk, scan,
+               screening, views)
 from .data import DataError, Steward
 from .meeting import Meeting
 from .portfolio import Portfolio
-from .store import Store
+from .review import TICKER as PORTFOLIO, PortfolioMeeting
+from .store import Store, now
 
 ROLE_STYLE = {
     "macro": ("Macro strategist", "MS", "blue"),
     "thesis": ("Thesis analyst", "TA", "green"),
     "valuation": ("Valuation analyst", "VA", "amber"),
     "redteam": ("Red team", "RT", "red"),
+    "earnings": ("Earnings analyst", "EA", "teal"),
+    "scout": ("Scout", "SC", "blue"),
+    "analyst": ("Research analyst", "AN", "green"),
+    "sentinel": ("Sentinel", "SN", "amber"),
     "risk": ("Risk officer", "RO", "violet"),
     "cio": ("Chair / CIO", "CIO", "ink"),
     "checker": ("Fact-checker", "FC", "slate"),
@@ -123,7 +131,7 @@ def resolve(text: str, m: mandate_mod.Mandate) -> str:
     t = text.strip()
     if not t:
         return t
-    pool = [(i.ticker, i.name) for i in m.instruments] + [(w.ticker, w.name) for w in m.watchlist] \
+    pool = [(i.ticker, i.name) for i in m.instruments] + [(w.ticker, w.name) for w in m.all_watch()] \
         + [(r.ticker, r.name) for r in m.rejected]
     low = t.lower()
     for tk, name in pool:
@@ -158,6 +166,7 @@ def create_app(store: Optional[Store] = None, steward: Optional[Steward] = None,
     store = store or Store(paths.db_path(book))
     steward = steward or Steward(snapshot=os.getenv("COUNCIL_OFFLINE") == "1")
     m = mandate or mandate_mod.load(paths.mandate_path(book))
+    screening.attach(m, store)                  # the scout's shortlist joins the universe
     pf = Portfolio(store, steward, m)
     backend_name = backend_factory().name
 
@@ -230,20 +239,43 @@ def create_app(store: Optional[Store] = None, steward: Optional[Steward] = None,
                                buys=count(groups["buy"]), watches=count(groups["watch"]),
                                avoids=count(groups["avoid"]))
 
+    def _meeting_ctx(mt: dict) -> tuple[dict, str]:
+        if mt["kind"] == "portfolio":
+            return views.portfolio_meeting(store, m, mt["id"]), "_book.html"
+        return views.debate(store, m, mt["id"]), "_debate.html"
+
     @app.get("/meetings/<int:mid>")
     def meeting_page(mid: int):
-        if not store.meeting(mid):
+        mt = store.meeting(mid)
+        if not mt:
             abort(404)
-        return render_template("meeting.html", **views.debate(store, m, mid))
+        ctx, partial = _meeting_ctx(mt)
+        return render_template("meeting.html", partial=partial, **ctx)
 
     @app.get("/meetings/<int:mid>/live")
     def meeting_live(mid: int):
         mt = store.meeting(mid)
         if not mt:
             abort(404)
-        ctx = views.debate(store, m, mid)
-        return jsonify(status=mt["status"], cost=mt["cost_usd"],
-                       html=render_template("_debate.html", **ctx))
+        ctx, partial = _meeting_ctx(mt)
+        return jsonify(status=mt["status"], cost=mt["cost_usd"], html=render_template(partial, **ctx))
+
+    @app.get("/pipeline")
+    def pipeline():
+        if not pf.started:
+            return redirect(url_for("dashboard"))
+        try:
+            q = quotes()
+        except DataError as e:
+            return render_template("error.html", error=str(e)), 503
+        return render_template("pipeline.html", p=views.pipeline(store, pf, m, q), busy=busy_label())
+
+    @app.get("/research/<int:did>")
+    def research_page(did: int):
+        v = views.dossier_page(store, m, did)
+        if not v:
+            abort(404)
+        return render_template("research.html", r=v)
 
     @app.get("/portfolio")
     def portfolio_page():
@@ -285,7 +317,7 @@ def create_app(store: Optional[Store] = None, steward: Optional[Steward] = None,
         if not pf.started:
             return redirect(url_for("dashboard"))
         t = resolve(ticker, m)
-        known = t in m.universe() or m.rejection(t) or pf.quantities().get(t)
+        known = t in m.universe() or m.rejection(t) or pf.quantities().get(t) or store.candidate(t)
         if not known:
             abort(404)
         try:
@@ -384,6 +416,84 @@ def create_app(store: Optional[Store] = None, steward: Optional[Steward] = None,
         flash("The council is meeting on " + ", ".join(c["name"] for c in plan["picked"])
               + ". Proposals will wait for your OK.")
         return redirect(url_for("meetings"))
+
+    def busy_label() -> str:
+        """What is running in the background; a flag older than 30 minutes is
+        from a server that stopped mid-run, so it no longer blocks."""
+        b = store.get_meta("busy") or {}
+        if not isinstance(b, dict) or not b.get("at"):
+            return ""
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(b["at"])).total_seconds()
+        return b["label"] if age < 1800 else ""
+
+    def _background(label: str, fn) -> None:
+        """Run a long stage in a thread (AI work takes minutes), one at a time."""
+        def work():
+            store.set_meta("busy", {"label": label, "at": now()})
+            try:
+                fn()
+            finally:
+                store.set_meta("busy", {})
+        if run_async:
+            threading.Thread(target=work, daemon=True).start()
+        else:
+            work()
+
+    def _busy() -> bool:
+        if busy_label():
+            flash(f"Busy: {busy_label()}. Try again when it is done.")
+            return True
+        return False
+
+    @app.post("/screen")
+    def run_screen():
+        if _busy():
+            return redirect(url_for("pipeline"))
+        b = backend_factory()
+
+        def go():
+            st2 = Store(store.path)
+            screening.run_screen(st2, steward, m, b)
+            screening.research_new_ideas(st2, steward, m, b)
+        _background("the scout is looking for ideas", go)
+        flash("The scout is looking. New ideas get a research file right after, within the weekly budget.")
+        return redirect(url_for("pipeline"))
+
+    @app.post("/research")
+    def run_research():
+        t = resolve(request.form.get("ticker", ""), m)
+        if not t or not (t in m.universe() or store.candidate(t)):
+            flash("Pick a name the council follows: the model portfolio, the watch list or the scout's ideas.")
+            return redirect(url_for("pipeline"))
+        if screening.research_left(store, m) <= 0:
+            flash(f"This week's {m.limits.max_research_files_per_week} research files are used.")
+            return redirect(url_for("pipeline"))
+        if _busy():
+            return redirect(url_for("pipeline"))
+        b = backend_factory()
+        _background(f"writing the research file on {views.display_name(m, store, t)}",
+                    lambda: screening.write_dossier(Store(store.path), steward, m, t, b, "Asked for by you"))
+        flash(f"Writing the research file on {views.display_name(m, store, t)}. It appears below when done.")
+        return redirect(request.form.get("next") or url_for("pipeline"))
+
+    @app.post("/candidates/<ticker>/drop")
+    def drop_candidate(ticker: str):
+        if screening.drop(store, ticker):
+            flash(f"Dropped {views.display_name(m, store, ticker)}: it leaves the shortlist.")
+        return redirect(request.form.get("next") or url_for("pipeline"))
+
+    @app.post("/portfolio-meeting")
+    def run_portfolio_meeting():
+        if not pf.started:
+            return redirect(url_for("dashboard"))
+        b = backend_factory()
+        mid = store.start_meeting(PORTFOLIO, "portfolio", b.name)
+        pm = PortfolioMeeting(Store(store.path), steward, m, pf, b)
+        if run_async:
+            threading.Thread(target=pm.run, args=(mid,), daemon=True).start()
+        else:
+            pm.run(mid)
+        return redirect(url_for("meeting_page", mid=mid))
 
     @app.post("/start")
     def start():

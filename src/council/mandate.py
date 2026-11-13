@@ -8,10 +8,10 @@ silently loosening a limit. Only the principal edits the file.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Callable, Literal, Optional
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from . import paths
 
@@ -50,6 +50,13 @@ class Limits(Strict):
     max_holding_reviews_per_month: int = Field(default=4, ge=0)
     review_holdings_every_days: int = Field(default=90, ge=7)
     max_postmortems_per_month: int = Field(default=2, ge=0)
+    # The staged council: scout, research files, watch, portfolio meeting.
+    screen_every_days: int = Field(default=7, ge=1)       # the scout's weekly look
+    max_new_ideas: int = Field(default=3, ge=0)           # per screening
+    max_research_files_per_week: int = Field(default=4, ge=0)
+    research_refresh_days: int = Field(default=90, ge=7)  # a file older than this is rewritten
+    big_drop: float = Field(default=0.10, gt=0, lt=1)     # a one-day fall that triggers a check
+    max_urgent_reviews_per_day: int = Field(default=1, ge=0)
 
     @model_validator(mode="after")
     def _order(self) -> "Limits":
@@ -125,6 +132,9 @@ class Mandate(Strict):
     instruments: list[Instrument]
     watchlist: list[WatchItem] = []
     rejected: list[Rejected] = []
+    # The scout's shortlist, read from the store each time: names a research
+    # file sent to the committee. Not part of the YAML; see `use_shortlist`.
+    _shortlist: Optional[Callable[[], list[WatchItem]]] = PrivateAttr(default=None)
 
     @model_validator(mode="after")
     def _check(self) -> "Mandate":
@@ -146,6 +156,23 @@ class Mandate(Strict):
 
     # ------------------------------------------------------------- lookups
 
+    def use_shortlist(self, provider: Callable[[], list[WatchItem]]) -> "Mandate":
+        """Let the scout's shortlisted names into the universe. They are
+        debated like watch-list names; every buy still passes the risk engine
+        and waits for your OK."""
+        self._shortlist = provider
+        return self
+
+    def shortlist(self) -> list[WatchItem]:
+        if not self._shortlist:
+            return []
+        own = {w.ticker for w in self.watchlist} | {i.ticker for i in self.instruments} \
+            | {r.ticker for r in self.rejected}
+        return [w for w in self._shortlist() if w.ticker not in own]
+
+    def all_watch(self) -> list[WatchItem]:
+        return list(self.watchlist) + self.shortlist()
+
     def target(self, ticker: str) -> float:
         i = self.instrument(ticker)
         return i.weights.get(self.setting) if i else 0.0
@@ -154,14 +181,17 @@ class Mandate(Strict):
         return next((i for i in self.instruments if i.ticker == ticker), None)
 
     def watch(self, ticker: str) -> Optional[WatchItem]:
-        return next((w for w in self.watchlist if w.ticker == ticker), None)
+        return next((w for w in self.all_watch() if w.ticker == ticker), None)
 
     def rejection(self, ticker: str) -> Optional[Rejected]:
         return next((r for r in self.rejected if r.ticker == ticker), None)
 
     def universe(self) -> list[str]:
         """Every ticker the council may hold a meeting about."""
-        return [i.ticker for i in self.instruments] + [w.ticker for w in self.watchlist]
+        return [i.ticker for i in self.instruments] + [w.ticker for w in self.all_watch()]
+
+    def is_shortlisted(self, ticker: str) -> bool:
+        return any(w.ticker == ticker for w in self.shortlist())
 
     def theme_of(self, ticker: str) -> str:
         x = self.instrument(ticker) or self.watch(ticker)

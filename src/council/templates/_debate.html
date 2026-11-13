@@ -27,7 +27,8 @@
 
 {# ---------- round 1 ---------- #}
 {% if facts %}
-<div class="round"><h2>Round 1 · Blind memos</h2><span class="muted">Written separately. No member saw another's memo.</span></div>
+<div class="round"><h2>Round 1 · Blind memos</h2><span class="muted">Written separately. No member saw another's memo.
+  {% if dossier %}Everyone read <a class="link" href="{{ url_for('research_page', did=dossier.id) }}">the research file of {{ dossier.created_at|day }}</a> first.{% endif %}</span></div>
 {% if memos %}
 <div class="memos">
   {% for x in memos %}{% set st = ROLE_STYLE[x.role] %}
@@ -47,6 +48,9 @@
         {% elif x.role == 'valuation' %}
           <p>Own history: {{ x.out.vs_own_history }}</p><p>Peers: {{ x.out.vs_peers }}</p>
           <p>Bear / base / bull: {{ x.out.bear_base_bull }}</p><p><b>Fair entry: {{ x.out.fair_entry }}</b></p>
+        {% elif x.role == 'earnings' %}
+          <p><b>{{ x.out.latest_quarter }}</b></p><p>Revenue: {{ x.out.revenue }}</p><p>Margins: {{ x.out.margins }}</p>
+          <p>Guidance: {{ x.out.guidance }}</p><p>The call: {{ x.out.management_tone }}</p><p><b>{{ x.out.thesis_check }}</b></p>
         {% elif x.role == 'macro' %}
           <p><b>{{ x.out.regime }}</b></p><p>{{ x.out.what_matters_for_this_stock }}</p>
           {% if x.out.scenario_odds %}<p class="small">Odds: {% for k, v in x.out.scenario_odds.items() %}{{ k|replace('_', ' ') }} {{ v }}%{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
@@ -59,7 +63,7 @@
   {% endfor %}
 </div>
 {% endif %}
-{% if running and blind_count < 4 %}<div class="thinking"><i></i>The members are researching and writing{% if mt.backend == 'claude' %}; this takes a few minutes{% endif %}…</div>{% endif %}
+{% if running and blind_count < 5 %}<div class="thinking"><i></i>The members are researching and writing{% if mt.backend == 'claude' %}; this takes a few minutes{% endif %}…</div>{% endif %}
 {% endif %}
 
 {# ---------- round 2 ---------- #}
@@ -75,7 +79,7 @@
     {% else %}<p class="muted">{{ 'Writing…' if running else 'No answer recorded.' }}</p>{% endif %}</div></div>
   {% endfor %}
 </div>
-{% elif running and blind_count == 4 %}<div class="thinking"><i></i>Cross-examination in progress…</div>{% endif %}
+{% elif running and blind_count >= 5 %}<div class="thinking"><i></i>Cross-examination in progress…</div>{% endif %}
 
 {# ---------- fact check ---------- #}
 {% if factcheck %}
@@ -112,6 +116,22 @@
 </section>
 {% elif running and pairs|length and not verdict %}<div class="thinking"><i></i>The committee is deliberating…</div>{% endif %}
 
+{# ---------- the vote ---------- #}
+{% if votes %}
+<div class="round"><h2>The vote</h2><span class="muted">After the debate, every member votes on the whole record. The CIO must answer anyone who disagrees.</span></div>
+<section class="card">
+  <div class="tally">
+    {% for k in ('buy', 'wait', 'no') %}<span class="pill {{ VOTE_CLS[k] }}">{{ VOTE_LABEL[k] }} · {{ tally[k] }}</span>{% endfor %}
+  </div>
+  <ul class="votes">
+    {% for v in votes %}{% set st = ROLE_STYLE[v.role] %}
+    <li>{{ avatar(v.role) }}<div class="grow"><b>{{ st[0] }}</b><div class="small muted">{{ v.reason }}</div></div>
+      <span class="pill {{ VOTE_CLS[v.vote] }}">{{ VOTE_LABEL[v.vote] }}</span></li>
+    {% endfor %}
+  </ul>
+</section>
+{% elif running and scen and not verdict %}<div class="thinking"><i></i>The members are voting…</div>{% endif %}
+
 {# ---------- verdict ---------- #}
 {% if verdict %}{% set d = verdict.d %}
 <section class="verdict" id="verdict">
@@ -129,6 +149,7 @@
       <div class="vtile sell"><span class="eyebrow">Sell if</span>{{ d.sell_if }}</div>
     </div>
     {% if d.breaker_triggered %}<div class="vnote"><span class="eyebrow">Breaker fired</span><p><b>{{ d.breaker_triggered }}</b></p></div>{% endif %}
+    {% if d.dissent_answer %}<div class="vnote"><span class="eyebrow">To the members who voted otherwise</span><p>{{ d.dissent_answer }}</p></div>{% endif %}
     <div class="vnote"><span class="eyebrow">CIO note</span><div class="md">{{ verdict.body|md|safe }}</div>
       {% if d.answers_to_objections %}<details style="margin-top:8px"><summary style="color:#c9c6bf">Answers to each objection</summary>
         <ol class="small" style="color:#ecebe7">{% for a in d.answers_to_objections %}<li value="{{ a.rank }}">{{ a.answer }}</li>{% endfor %}</ol></details>{% endif %}

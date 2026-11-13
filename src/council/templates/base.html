@@ -21,6 +21,7 @@
       {% if latest_meeting %}<a href="{{ url_for('meeting_page', mid=latest_meeting) }}" class="{{ 'on' if ep == 'meeting_page' }}">Meeting</a>
       {% else %}<span title="No meeting yet">Meeting</span>{% endif %}
       <a href="{{ url_for('meetings') }}" class="{{ 'on' if ep == 'meetings' }}">Meetings</a>
+      <a href="{{ url_for('pipeline') }}" class="{{ 'on' if ep in ('pipeline', 'research_page') }}">Pipeline</a>
       <a href="{{ url_for('portfolio_page') }}" class="{{ 'on' if ep == 'portfolio_page' }}">Portfolio</a>
       <a href="{{ url_for('rules') }}" class="{{ 'on' if ep == 'rules' }}">Rules</a>
       <a href="{{ url_for('scorecard') }}" class="{{ 'on' if ep in ('scorecard', 'postmortem_page') }}">Scorecard</a>

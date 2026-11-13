@@ -6,7 +6,7 @@ here, so it can be tested and so a page can never invent one.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -19,9 +19,30 @@ from .store import Store
 STANCE_LABEL = {"supportive": "Supportive", "neutral": "Neutral",
                 "cautious": "Cautious", "against": "Against"}
 DECISION_LABEL = {"buy": "Buy", "add": "Add", "hold": "Hold", "trim": "Trim", "sell": "Sell",
-                  "watch": "Watch", "reject": "Avoid"}
+                  "watch": "Watch", "reject": "Avoid", "swap": "Swap", "keep": "Keep"}
+DECISION_CLS = {"swap": "accent", "keep": "hold"}
 ROLE_SUB = {"macro": "The economy", "thesis": "Five-point chokepoint test",
-            "valuation": "Is it priced in?", "redteam": "Pre-mortem: why did we lose 40%?"}
+            "valuation": "Is it priced in?", "earnings": "The latest results",
+            "redteam": "Pre-mortem: why did we lose 40%?"}
+VOTE_LABEL = {"buy": "Buy", "wait": "Wait", "no": "No"}
+VOTE_CLS = {"buy": "buy", "wait": "watch", "no": "sell"}
+VERDICT_LABEL = {"send_to_committee": "Send to the committee", "keep_watching": "Keep watching", "drop": "Drop"}
+VERDICT_CLS = {"send_to_committee": "hit", "keep_watching": "watch", "drop": "notyet"}
+CAND_LABEL = {"new": "Waiting for its file", "shortlisted": "Shortlisted", "watching": "Watching",
+              "dropped": "Dropped"}
+CAND_CLS = {"new": "notyet", "shortlisted": "hit", "watching": "watch", "dropped": "reject"}
+ALERT_LABEL = {"open": "Not judged yet", "noise": "Noise", "watch": "Noted", "convene": "Review asked",
+               "failed": "Failed"}
+ALERT_CLS = {"open": "notyet", "noise": "ok", "watch": "watch", "convene": "sell", "failed": "reject"}
+
+
+def display_name(m: Mandate, store: Store, ticker: str) -> str:
+    if ticker == "PORTFOLIO":
+        return "Portfolio meeting"
+    if ticker in m.universe() or m.rejection(ticker):
+        return m.name_of(ticker)
+    c = store.candidate(ticker)
+    return c["name"] if c else ticker
 
 
 # ------------------------------------------------------------------ format
@@ -144,11 +165,12 @@ def decision_row(mt: dict, m: Mandate) -> dict:
     if mt["status"] == "running":
         label, cls = "In session", "outline"
     elif d.get("decision"):
-        label, cls = DECISION_LABEL[d["decision"]], d["decision"]
+        label, cls = DECISION_LABEL[d["decision"]], DECISION_CLS.get(d["decision"], d["decision"])
     else:
         label, cls = mt["status"].capitalize(), "notyet"
     blocked = (mt.get("outcome") or {}).get("blocked_by") or []
-    return {"id": mt["id"], "ticker": mt["ticker"], "name": m.name_of(mt["ticker"]),
+    name = "Portfolio meeting" if mt["kind"] == "portfolio" else m.name_of(mt["ticker"])
+    return {"id": mt["id"], "ticker": mt["ticker"], "name": name,
             "grade": d.get("grade") or "", "date": day_label(mt["started_at"]),
             "sub": sub, "label": label, "cls": cls,
             "trigger": trig if trig and trig.lower() != "none" else "",
@@ -163,7 +185,9 @@ def proposal_rows(store: Store, m: Mandate) -> list[dict]:
         exp = local(p["expires_at"])
         days = (exp - datetime.now(exp.tzinfo)).days if exp else None
         out.append({"id": p["id"], "summary": p["summary"], "ticker": p["ticker"],
-                    "name": m.name_of(p["ticker"]) if p["ticker"] != "INDEX" else "Index ETFs",
+                    "name": (m.name_of(p["ticker"]) if p["ticker"] != "INDEX" else "Index ETFs")
+                            if p["action"] != "swap" else
+                            f"{m.name_of(p['data']['sell'])} → {m.name_of(p['data']['buy'])}",
                     "grade": p["data"].get("grade") or "", "meeting_id": p["meeting_id"],
                     "action": p["action"], "label": p["data"].get("action_label") or "",
                     "expires": f"expires in {days} day{'s' if days != 1 else ''}" if days is not None and days >= 1
@@ -232,9 +256,9 @@ def money(store: Store, pf: Portfolio, m: Mandate, quotes: dict) -> dict:
 
 # ----------------------------------------------------------------- meeting
 
-STEPS = [("gate", "Gate", "Code"), ("blind", "Blind memos", "MS · TA · VA · RT"),
+STEPS = [("gate", "Gate", "Code"), ("blind", "Blind memos", "MS · TA · VA · EA · RT"),
          ("objections", "Objections", "RT"), ("rebuttal", "Rebuttals", "TA"),
-         ("riskmemo", "Risk check", "FC · RO"), ("verdict", "Verdict", "CIO"),
+         ("riskmemo", "Risk check", "FC · RO"), ("vote", "Vote", "All"), ("verdict", "Verdict", "CIO"),
          ("approval", "Your OK", "You")]
 
 
@@ -265,8 +289,12 @@ def debate(store: Store, m: Mandate, mid: int) -> dict:
     factcheck = next((s for s in steps if s["role"] == "checker"), None)
     proposal = next(iter(store.proposals(meeting_id=mid)), None)
 
-    present = {"gate": bool(gate), "blind": len(blind) == 4, "objections": bool(objections),
-               "rebuttal": bool(rebuttal), "riskmemo": bool(riskmemo), "verdict": bool(cio),
+    vote_steps = [x for x in steps if x["phase"] == "vote"]
+    votes = [{"role": x["role"], **((x.get("data") or {}).get("output") or {})} for x in vote_steps]
+    tally = {k: sum(1 for v in votes if v.get("vote") == k) for k in ("buy", "wait", "no")}
+    present = {"gate": bool(gate), "blind": len(blind) >= 4, "objections": bool(objections),
+               "rebuttal": bool(rebuttal), "riskmemo": bool(riskmemo),
+               "vote": bool(votes) or (bool(cio) and not votes), "verdict": bool(cio),
                "approval": bool(engine) and (proposal is None or proposal["status"] != "pending")}
     running = mt["status"] == "running"
     first_missing = next((k for k, *_ in STEPS if not present[k]), None)
@@ -286,7 +314,7 @@ def debate(store: Store, m: Mandate, mid: int) -> dict:
                       "model": (s.get("data") or {}).get("model", ""),
                       "sources": (s.get("data") or {}).get("sources") or [],
                       "prov": _provenance(s, facts, mt["backend"])})
-    order = ["macro", "thesis", "valuation", "redteam"]
+    order = ["macro", "thesis", "valuation", "earnings", "redteam"]
     memos.sort(key=lambda x: order.index(x["role"]) if x["role"] in order else 9)
 
     pairs = []
@@ -397,7 +425,14 @@ def debate(store: Store, m: Mandate, mid: int) -> dict:
             "verdict": verdict, "engine": eng, "orders": orders, "stopped": stopped,
             "factcheck": (factcheck or {}).get("data", {}).get("output") if factcheck else None,
             "proposal": proposal, "postmortems": store.postmortems(mid),
-            "running": running, "blind_count": len(blind)}
+            "running": running, "blind_count": len(blind),
+            "votes": votes, "tally": tally, "VOTE_LABEL": VOTE_LABEL, "VOTE_CLS": VOTE_CLS,
+            "dossier": _dossier_ref(store, mt["ticker"], mt["started_at"])}
+
+
+def _dossier_ref(store: Store, ticker: str, before: str) -> Optional[dict]:
+    """The research file the members read: the newest one written before the meeting."""
+    return next((d for d in store.dossiers(ticker, "done") if d["created_at"] <= before), None)
 
 
 # ----------------------------------------------------------------- tables
@@ -502,14 +537,18 @@ def stock(store: Store, pf: Portfolio, m: Mandate, steward: Steward, ticker: str
     except DataError:
         q = None                     # a rejected name may have no price on hand
     inst, watch, rej = m.instrument(ticker), m.watch(ticker), m.rejection(ticker)
+    cand = store.candidate(ticker)
     held = pf.quantities().get(ticker, 0.0)
     pos = next((p for p in pf.positions() if p.ticker == ticker), None)
     if held:
         status, cls = "Held", "buy"
-    elif watch:
+    elif watch and not m.is_shortlisted(ticker):
         status, cls = "Watch list", "watch"
     elif rej:
         status, cls = "Rejected", "reject"
+    elif cand:
+        status, cls = f"Scout's idea · {CAND_LABEL.get(cand['status'], cand['status']).lower()}", \
+            CAND_CLS.get(cand["status"], "notyet")
     else:
         status, cls = "In the model portfolio" if inst else "Not in the mandate", "notyet"
 
@@ -538,11 +577,15 @@ def stock(store: Store, pf: Portfolio, m: Mandate, steward: Steward, ticker: str
     breakers = list(dict.fromkeys((inst.breakers if inst else []) + ((latest or {}).get("breakers") or [])))
     trades = [t for t in store.trades(ticker)]
     return {
-        "ticker": ticker, "name": m.name_of(ticker), "theme": m.theme_of(ticker), "q": q,
+        "ticker": ticker, "name": display_name(m, store, ticker),
+        "theme": m.theme_of(ticker) or ((cand or {}).get("data", {}).get("idea") or {}).get("theme", ""), "q": q,
         "status": status, "status_cls": cls, "pos": pos, "target": m.target(ticker),
         "ai": m.is_ai(ticker), "taiwan": m.is_taiwan(ticker),
-        "why": (latest or {}).get("thesis") or (inst.thesis if inst else (watch.thesis if watch else "")),
-        "why_source": "the latest meeting" if (latest or {}).get("thesis") else "the October committee review",
+        "why": (latest or {}).get("thesis") or (inst.thesis if inst else (watch.thesis if watch else
+                ((cand or {}).get("data", {}).get("idea") or {}).get("chokepoint", ""))),
+        "why_source": "the latest meeting" if (latest or {}).get("thesis") else
+                      ("the scout" if cand and not inst and not (watch and not m.is_shortlisted(ticker))
+                       else "the October committee review"),
         "grade": (latest or {}).get("d", {}).get("grade") or (inst.grade if inst else (watch.grade if watch else "")),
         "committee_trigger": (inst.trigger if inst else (watch.event if watch else "")),
         "rejected": rej.reason if rej else "", "latest": latest, "history": history,
@@ -552,4 +595,133 @@ def stock(store: Store, pf: Portfolio, m: Mandate, steward: Steward, ticker: str
         "postmortems": [p for p in store.postmortems() if p["ticker"] == ticker],
         "news": steward.news(ticker, 8), "news_live": steward.mode == "live",
         "in_universe": ticker in m.universe(),
+        "dossier": store.latest_dossier(ticker), "alerts": alert_rows(store, m, ticker),
+        "candidate": cand, "VERDICT_LABEL": VERDICT_LABEL, "VERDICT_CLS": VERDICT_CLS,
     }
+
+
+# ---------------------------------------------------------------- pipeline
+
+def candidate_rows(store: Store, m: Mandate) -> list[dict]:
+    out = []
+    for c in store.candidates():
+        i = c["data"].get("idea") or {}
+        d = store.latest_dossier(c["ticker"])
+        mt = next((x for x in store.meetings(500) if x["ticker"] == c["ticker"]), None)
+        out.append({"ticker": c["ticker"], "name": c["name"], "theme": i.get("theme", ""),
+                    "why": i.get("chokepoint", ""), "question": i.get("open_question", ""),
+                    "status": c["status"], "label": CAND_LABEL.get(c["status"], c["status"]),
+                    "cls": CAND_CLS.get(c["status"], "notyet"), "found": day_label(c["created_at"]),
+                    "dossier": d, "meeting": mt, "backend": c["data"].get("backend", "")})
+    return out
+
+
+def dossier_rows(store: Store, m: Mandate, limit: int = 30) -> list[dict]:
+    out = []
+    for d in store.dossiers()[:limit]:
+        o = (d.get("data") or {}).get("output") or {}
+        out.append({"id": d["id"], "ticker": d["ticker"], "name": display_name(m, store, d["ticker"]),
+                    "date": day_label(d["created_at"]), "status": d["status"], "backend": d["backend"],
+                    "reason": d["reason"], "verdict": o.get("verdict"),
+                    "label": VERDICT_LABEL.get(o.get("verdict"), d["status"].capitalize()),
+                    "cls": VERDICT_CLS.get(o.get("verdict"), "notyet"), "cost": d["cost_usd"] or 0.0,
+                    "summary": o.get("summary", "")})
+    return out
+
+
+def alert_rows(store: Store, m: Mandate, ticker: Optional[str] = None) -> list[dict]:
+    out = []
+    for a in store.alerts(ticker):
+        chk = a["data"].get("check") or {}
+        out.append({"id": a["id"], "ticker": a["ticker"], "name": display_name(m, store, a["ticker"]),
+                    "date": day_label(a["created_at"]), "kind": a["kind"], "reason": a["reason"],
+                    "status": a["status"], "label": ALERT_LABEL.get(a["status"], a["status"]),
+                    "cls": ALERT_CLS.get(a["status"], "notyet"), "meeting_id": a.get("meeting_id"),
+                    "what": chk.get("what_happened", ""), "memo": chk.get("memo", ""),
+                    "breaker": chk.get("breaker_fired", ""), "backend": a.get("backend") or "",
+                    "sources": a["data"].get("sources") or []})
+    return out
+
+
+def pipeline(store: Store, pf: Portfolio, m: Mandate, quotes: dict) -> dict:
+    from . import review, scan, screening
+    last = store.get_meta("last_screen")
+    nxt = None
+    if last:
+        nxt = day_label((datetime.fromisoformat(last["at"]) +
+                         timedelta(days=m.limits.screen_every_days)).isoformat())
+    pms = [x for x in store.meetings(500) if x["kind"] == "portfolio"]
+    cands = candidate_rows(store, m)
+    return {
+        "last_screen": last, "next_screen": nxt, "screen_due": screening.screen_due(store, m),
+        "candidates": cands, "n_short": sum(1 for c in cands if c["status"] == "shortlisted"),
+        "dossiers": dossier_rows(store, m), "research_left": screening.research_left(store, m),
+        "agenda": scan.agenda(store, pf, m, quotes), "slots": meeting_slots(store, m),
+        "holding_used": store.meetings_this_month("holding"),
+        "alerts": alert_rows(store, m), "portfolio_meetings": [decision_row(x, m) for x in pms],
+        "portfolio_due": review.due(store), "queue": store.get_meta("review_queue", []),
+        "pending": proposal_rows(store, m),
+        "universe": [(t, m.name_of(t)) for t in m.universe()          # stocks only: funds need no file
+                     if m.is_stock(t) and not store.candidate(t)],
+    }
+
+
+def dossier_page(store: Store, m: Mandate, did: int) -> Optional[dict]:
+    d = store.dossier(did)
+    if not d:
+        return None
+    o = (d.get("data") or {}).get("output") or {}
+    others = [x for x in store.dossiers(d["ticker"]) if x["id"] != did]
+    return {"d": d, "o": o, "name": display_name(m, store, d["ticker"]),
+            "facts": (d.get("data") or {}).get("facts") or {},
+            "sources": (d.get("data") or {}).get("sources") or [],
+            "label": VERDICT_LABEL.get(o.get("verdict"), d["status"].capitalize()),
+            "cls": VERDICT_CLS.get(o.get("verdict"), "notyet"),
+            "date": day_label(d["created_at"], year=True), "others": others,
+            "candidate": store.candidate(d["ticker"])}
+
+
+PM_STEPS = [("facts", "The whole book", "Code"), ("risk", "Risk", "RO"), ("challenge", "Weakest", "RT"),
+            ("decision", "Ranking", "CIO"), ("rules", "Swap rules", "Code"), ("approval", "Your OK", "You")]
+
+
+def portfolio_meeting(store: Store, m: Mandate, mid: int) -> dict:
+    mt = store.meeting(mid)
+    steps = store.steps(mid)
+    get = lambda phase, role: next((x for x in steps if x["phase"] == phase and x["role"] == role), None)
+    facts, risk_s = get("facts", "code"), get("committee", "risk")
+    red, cio, rules = get("committee", "redteam"), get("committee", "cio"), get("rules", "code")
+    proposal = next(iter(store.proposals(meeting_id=mid)), None)
+    present = {"facts": bool(facts), "risk": bool(risk_s), "challenge": bool(red), "decision": bool(cio),
+               "rules": bool(rules), "approval": bool(rules) and (proposal is None or proposal["status"] != "pending")}
+    running = mt["status"] == "running"
+    first_missing = next((k for k, *_ in PM_STEPS if not present[k]), None)
+    waiting = proposal is not None and proposal["status"] == "pending"
+    stepper = [{"key": k, "label": lab, "sub": sub,
+                "state": "done" if present[k] else ("now" if (running and k == first_missing)
+                                                    or (waiting and k == "approval") else "")}
+               for k, lab, sub in PM_STEPS]
+    f = (facts or {}).get("data") or {}
+    rows = {r["ticker"]: r for r in f.get("stocks", [])}
+    ranking = []
+    if cio:
+        for v in cio["data"]["output"].get("ranking") or []:
+            r = rows.get(v["ticker"], {})
+            ranking.append({**v, "name": m.name_of(v["ticker"]), "weight": r.get("weight"),
+                            "gain": r.get("gain_pct"), "grade": r.get("grade"), "ai": r.get("ai")})
+    scen = None
+    if risk_s:
+        o = risk_s["data"]["output"]
+        biggest = max((abs(x["stock_move_pct"]) for x in o.get("scenarios") or []), default=1) or 1
+        scen = [{"name": x["scenario"], "move": x["stock_move_pct"],
+                 "width": abs(x["stock_move_pct"]) / biggest * 100} for x in o.get("scenarios") or []]
+    return {"mt": mt, "title": "Portfolio meeting", "subtitle": "The whole book, once a month",
+            "when": f"{day_label(mt['started_at'], year=True)}, {time_label(mt['started_at'])}",
+            "stepper": stepper, "facts": f, "facts_body": (facts or {}).get("body", ""),
+            "risk": (risk_s or {}).get("data", {}).get("output") if risk_s else None, "scen": scen,
+            "risk_body": (risk_s or {}).get("body", ""),
+            "red": (red or {}).get("data", {}).get("output") if red else None,
+            "cio": (cio or {}).get("data", {}).get("output") if cio else None, "cio_body": (cio or {}).get("body", ""),
+            "ranking": ranking, "rules": (rules or {}).get("data"), "proposal": proposal,
+            "running": running, "verdict": None,
+            "stopped": [x for x in steps if x["phase"] == "rules" and not x.get("data")]}

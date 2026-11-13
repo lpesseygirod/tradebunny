@@ -266,3 +266,25 @@ td.num, td.r { white-space: nowrap; }
 .autopilot-banner { background: var(--dark); border-color: var(--dark); margin-bottom: 20px; }
 .peer { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
 .peer .grow { flex: 1; min-width: 240px; }
+
+/* ---- the staged council: pipeline, votes, research files ---- */
+:root { --teal: #2a8686; }
+.c-teal { --c: var(--teal); }
+.funnel { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.funnel .stage { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); color: var(--ink); text-decoration: none; position: relative; }
+.funnel .stage:hover { border-color: var(--ink); }
+.funnel .stage .n { font: 700 .72rem var(--mono); color: var(--muted); }
+.funnel .stage b { font-size: 1.02rem; }
+.funnel .stage small { color: var(--muted); font-size: .8rem; }
+.funnel .stage:not(:last-child)::after { content: "›"; position: absolute; right: -9px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 700; }
+@media (max-width: 760px) { .funnel { grid-template-columns: 1fr 1fr; } .funnel .stage::after { display: none; } }
+.tally { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+ul.votes { list-style: none; margin: 0; padding: 0; }
+ul.votes li { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+ul.votes li:first-child { border-top: 0; }
+.testmark { display: inline-block; margin: 0 10px 4px 0; white-space: nowrap; }
+.testmark.yes { color: var(--good); } .testmark.no { color: var(--bad); } .testmark.unclear { color: var(--muted); }
+select.input { font: inherit; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); max-width: 240px; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+ul.votes .grow, .funnel .grow { flex: 1; min-width: 0; }

@@ -9,17 +9,30 @@
   </div>
 </div>
 
-<div class="grid g2">
+<section class="card">
+  <h2>From idea to trade: five stages</h2>
+  <p class="muted small">Like a real fund: many ideas at the top, few reach the committee, fewer reach your OK. The evening job runs the stages in order; the <a class="link" href="{{ url_for('pipeline') }}">Pipeline</a> page shows each one.</p>
+  <ol class="how-steps">
+    <li><div><b>Scout</b> · every {{ lim.screen_every_days }} days<div class="small muted">Looks beyond the watch list for chokepoints across themes and countries; up to {{ lim.max_new_ideas }} new names. Code turns away any name already held, watched or rejected, or without a real price. <span class="pill outline mono tiny">code</span></div></div></li>
+    <li><div><b>Research file</b> · up to {{ lim.max_research_files_per_week }} a week<div class="small muted">An analyst writes the homework from annual reports and filings: how it makes money, the five-point test, financials, management, competition, risks, sources. "Send to the committee" shortlists a new idea. Files are rewritten after {{ lim.research_refresh_days }} days.</div></div></li>
+    <li><div><b>Committee</b> · {{ lim.max_meetings_per_month }} idea meetings and {{ lim.max_holding_reviews_per_month }} reviews a month<div class="small muted">The full debate on one stock, below. Once a month, a <b>portfolio meeting</b> looks at the whole book and may propose one swap.</div></div></li>
+    <li><div><b>Your OK</b><div class="small muted">Every trade waits for you{{ ' (on the Autopilot book, the council approves itself)' if autopilot }}. Approving re-checks every rule at today's price. <span class="pill outline mono tiny">code</span></div></div></li>
+    <li><div><b>Watch</b> · every evening<div class="small muted">Results days and one-day falls of {{ (lim.big_drop * 100)|round|int }}% or more on what we own. The sentinel checks them against the thesis breakers: noise, noted, or an urgent committee review.</div></div></li>
+  </ol>
+</section>
+
+<div class="grid g2 mt">
   <section class="card">
     <h2>1 · What gets discussed</h2>
     <p class="muted small">The council's agenda is picked by rules, never by mood. "Let the council choose" and the daily job use exactly this order.</p>
     <ol class="small">
-      <li><b>Watch-list names whose buy trigger is hit</b>: forward P/E or price at or below the committee's entry level. <span class="pill outline mono tiny">code</span></li>
-      <li><b>Names close to their trigger</b>: within 10% on P/E, 5% on price. <span class="pill outline mono tiny">code</span></li>
+      <li><b>Urgent reviews</b> the sentinel asked for after results or a big fall. <span class="pill outline mono tiny">code</span></li>
+      <li><b>Watch-list names whose buy trigger is hit</b>: forward P/E or price at or below the committee's entry level, and holdings at their add level. <span class="pill outline mono tiny">code</span></li>
+      <li><b>Names close to their trigger</b> (within 10% on P/E, 5% on price), and the scout's shortlisted ideas. <span class="pill outline mono tiny">code</span></li>
+      <li><b>Holdings the portfolio meeting sent back</b> for review. <span class="pill outline mono tiny">code</span></li>
       <li><b>Holdings not reviewed for {{ lim.review_holdings_every_days }} days</b>: each stock is re-examined about quarterly. <span class="pill outline mono tiny">code</span></li>
     </ol>
-    <p class="small">At most <b>{{ lim.max_meetings_per_month }} idea meetings</b> and <b>{{ lim.max_holding_reviews_per_month }} holding reviews</b> a month, and no name twice within 14 days, so it can't overtrade. <span class="pill outline mono tiny">code</span>
-      Event triggers (results dates, filings) are yours to call: a price can't tell a program that an event happened.</p>
+    <p class="small">At most <b>{{ lim.max_meetings_per_month }} idea meetings</b> and <b>{{ lim.max_holding_reviews_per_month }} holding reviews</b> a month, and no name twice within 14 days, so it can't overtrade. <span class="pill outline mono tiny">code</span></p>
   </section>
   <section class="card">
     <h2>2 · The five-point business test</h2>
@@ -40,12 +53,13 @@
   <ol class="how-steps">
     <li><div><b>Gate</b> <span class="pill outline mono tiny">code</span><div class="small muted">Is the name in your mandate, is it not rejected, is a meeting slot free? If not, nobody writes a word and nothing is spent.</div></div></li>
     <li><div><b>Fact sheet</b> <span class="pill outline mono tiny">code</span><div class="small muted">Price, forward P/E, 52-week range, what you hold, the caps, the committee's last view. Every number with its source and time; stale prices are refused.</div></div></li>
-    <li><div><b>Round 1 · four blind memos</b>, written in parallel, nobody seeing the others, each researching the web with dated sources:
-      <div class="small muted"><b>Macro strategist</b>: the economy and the AI spending cycle; never names a stock. · <b>Thesis analyst</b>: the five-point test with this round's evidence only. · <b>Valuation analyst</b>: is it priced in, against its own history and peers. · <b>Red team</b>: a pre-mortem, "two years on we lost 40%: why?", on a different AI model so its blind spots differ.</div></div></li>
+    <li><div><b>Round 1 · five blind memos</b>, written in parallel after reading the research file, nobody seeing the others, each researching the web with dated sources:
+      <div class="small muted"><b>Macro strategist</b>: the economy and the AI spending cycle; never names a stock. · <b>Thesis analyst</b>: the five-point test with this round's evidence only. · <b>Valuation analyst</b>: is it priced in, against its own history and peers. · <b>Earnings analyst</b>: the latest results, guidance and call, against the thesis. · <b>Red team</b>: a pre-mortem, "two years on we lost 40%: why?", on a different AI model so its blind spots differ.</div></div></li>
     <li><div><b>Round 2 · cross-examination</b><div class="small muted">The red team reads the thesis and ranks three objections, each with evidence and a test that would prove it right. Generic objections are not allowed. The thesis analyst gets one rebuttal and must concede where the evidence is against it.</div></div></li>
     <li><div><b>Fact-checker</b><div class="small muted">Checks the claims the decision rests on against the fact sheet and the sources: confirmed, unsupported or contradicted. Unsupported claims count for nothing.</div></div></li>
     <li><div><b>Risk officer</b><div class="small muted">Which holdings are the same bet, and what each scenario (AI spending cut, rates up, recession, a Taiwan crisis…) does to the stock. Code turns that into the cost to the whole portfolio. May only ask for stricter action.</div></div></li>
-    <li><div><b>CIO verdict</b><div class="small muted">A grade, a decision, a buy trigger and a "sell if" tied to the thesis, with an answer to every objection. "No action" is the default: the burden of proof is on buying.</div></div></li>
+    <li><div><b>The vote</b><div class="small muted">Every member reads the whole record and votes buy, wait or no, with the one fact that decides it.</div></div></li>
+    <li><div><b>CIO verdict</b><div class="small muted">A grade, a decision, a buy trigger and a "sell if" tied to the thesis, with an answer to every objection and to every member who voted otherwise. "No action" is the default: the burden of proof is on buying.</div></div></li>
     <li><div><b>Code checks the verdict</b> <span class="pill outline mono tiny">code</span><div class="small muted">Only A, or B with its trigger reached, may be bought. A grade-B name with a price or P/E trigger waits until the trigger is actually reached. A full position needs grade A. A sale needs a named thesis breaker. Then the size: position, Taiwan, AI and stock-count caps, paid from the watch-list reserve first.</div></div></li>
     <li><div><b>Your OK</b> <span class="pill outline mono tiny">code</span><div class="small muted">Everything allowed becomes a proposal on the Money page. Nothing trades until you approve. Approving re-checks every rule at today's price; an unanswered proposal expires after {{ lim.proposal_days }} days.</div></div></li>
     <li><div><b>The order</b> <span class="pill outline mono tiny">code</span><div class="small muted">Limit orders at the last price, in {{ lim.tranches }} tranches {{ lim.tranche_spacing_days }} days apart: the first now, the rest at the daily review. {{ 'Paper money at real prices.' if mandate.broker.kind == 'paper' else 'Sent to Interactive Brokers.' }}</div></div></li>
@@ -68,6 +82,7 @@
       <li><b>Only when a thesis breaker fires</b>, named in the verdict. A price drop alone never sells: 20% falls are routine for 5-year positions. <span class="pill outline mono tiny">code</span></li>
       <li><b>Trim</b> sells half; <b>sell</b> sells all and cancels any tranches still planned. <span class="pill outline mono tiny">code</span></li>
       <li>Every sale is a proposal too, and waits for your OK. <span class="pill outline mono tiny">code</span></li>
+      <li><b>A swap</b> (portfolio meeting) sells a holding only if the committee marked it down (grade C or D, or a breaker fired) and buys only a name a committee already approved. Both halves are re-checked before anything is sold. <span class="pill outline mono tiny">code</span></li>
       <li>If the whole portfolio falls {{ (lim.max_loss * 100)|round|int }}% below its peak, the Rules page flags the committee's rule: move 10 points from stocks to euro bonds.</li>
     </ul>
     <p class="src">From your committee documents: Investment Committee Report (23 Sep), Full Review (2 Oct), Supply Chain Market Review (6 Oct) and the "Trader committee team" design (24 Sep).</p>

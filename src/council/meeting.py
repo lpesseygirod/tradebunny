@@ -1,12 +1,15 @@
 """One council meeting about one stock, from the gate to the trade.
 
     gate        code: is it in the universe, is the monthly meeting cap free?
-    facts       code: the fact sheet, the only numbers anyone may cite
-    blind       macro, thesis, valuation and the red team's pre-mortem,
-                written in parallel, none seeing the others
+    facts       code: the fact sheet, the only numbers anyone may cite, with
+                the stock's research file when one exists
+    blind       macro, thesis, valuation, earnings and the red team's
+                pre-mortem, written in parallel, none seeing the others
     cross       the red team reads the thesis and ranks three objections;
                 the thesis analyst gets one rebuttal
-    committee   the risk officer's exposure memo, then the CIO's verdict
+    committee   the fact-checker, the risk officer's exposure memo
+    vote        every member votes buy, wait or no, with one reason
+    verdict     the CIO decides and answers every member who voted otherwise
     risk        code: the risk engine sizes the verdict or blocks it
     approval    a proposal that waits for YOU; nothing trades until you say yes
 
@@ -40,6 +43,22 @@ def _md_list(items) -> str:
     return "\n".join(f"- {x}" for x in items) if items else "- none"
 
 
+def prior_view(m: Mandate, ticker: str) -> dict:
+    """The committee's last written view of a name, from the mandate."""
+    i = m.instrument(ticker)
+    if i:
+        return {"grade": i.grade, "thesis": i.thesis, "trigger": i.trigger,
+                "entry_price_eur": i.entry_price_eur, "breakers": list(i.breakers),
+                "trigger_pe": None, "status": "in the model portfolio"}
+    w = m.watch(ticker)
+    if w:
+        return {"grade": w.grade, "thesis": w.thesis, "trigger": w.event,
+                "entry_price_eur": w.trigger_price_eur, "breakers": [],
+                "trigger_pe": w.trigger_pe,
+                "status": "on the scout's shortlist" if m.is_shortlisted(ticker) else "on the watch list"}
+    return {}
+
+
 class Meeting:
     def __init__(self, store: Store, steward: Steward, mandate: Mandate,
                  portfolio: Portfolio, backend: Backend):
@@ -50,17 +69,7 @@ class Meeting:
     # ------------------------------------------------------------ context
 
     def prior_view(self, ticker: str) -> dict:
-        i = self.m.instrument(ticker)
-        if i:
-            return {"grade": i.grade, "thesis": i.thesis, "trigger": i.trigger,
-                    "entry_price_eur": i.entry_price_eur, "breakers": list(i.breakers),
-                    "trigger_pe": None, "status": "in the model portfolio"}
-        w = self.m.watch(ticker)
-        if w:
-            return {"grade": w.grade, "thesis": w.thesis, "trigger": w.event,
-                    "entry_price_eur": w.trigger_price_eur, "breakers": [],
-                    "trigger_pe": w.trigger_pe, "status": "on the watch list"}
-        return {}
+        return prior_view(self.m, ticker)
 
     def fact_sheet(self, ticker: str) -> dict:
         quotes = self.steward.quotes(self.pf.tickers_needed())
@@ -127,6 +136,20 @@ class Meeting:
         past = learning.history_text(self.store, self.m, f["ticker"])
         if past:
             lines += ["", "## The council's past calls on this name, and how they turned out", past]
+        rf = self.store.latest_dossier(f["ticker"])
+        if rf:
+            o = rf["data"].get("output") or {}
+            bt = o.get("business_test") or {}
+            marks = {"yes": "passes", "no": "fails", "unclear": "unclear"}
+            lines += ["", f"## The research file ({rf['created_at'][:10]}; {rf['backend']}): the homework",
+                      o.get("summary", ""),
+                      "- Five-point test: " + "; ".join(f"{k.replace('_', ' ')} {marks.get(v.get('passes'), '?')}"
+                                                         for k, v in bt.items()),
+                      f"- Financials: {o.get('financials', '-')}",
+                      f"- Competition: {o.get('competition', '-')}",
+                      "- Risks: " + ("; ".join(o.get("risks") or []) or "-"),
+                      "- What would change our mind: " + ("; ".join(o.get("what_would_change_our_mind") or []) or "-"),
+                      f"- The analyst's call: {o.get('verdict', '-')}: {o.get('verdict_reason', '')}"]
         lessons = learning.lessons_text(self.store)
         if lessons:
             lines += ["", "## Lessons the principal approved from past post-mortems (apply them)", lessons]
@@ -205,11 +228,14 @@ class Meeting:
                        f"{facts}\n\n{task} Write the thesis memo with the five-point test."),
             "valuation": ("valuation", agents.ValuationMemo,
                           f"{facts}\n\n{task} Is it already priced in?"),
+            "earnings": ("earnings", agents.EarningsMemo,
+                         f"{facts}\n\n{task} Read the latest quarterly results, guidance and call: "
+                         "do they support or weaken the thesis?"),
             "premortem": ("redteam", agents.Premortem,
                           f"{facts}\n\n{task} You have not seen anyone's case for it. Write a "
                           "pre-mortem: two years from now this position lost 40%. Why?"),
         }
-        with ThreadPoolExecutor(max_workers=4) as ex:
+        with ThreadPoolExecutor(max_workers=5) as ex:
             futures = {k: ex.submit(self._ask, mid, k, role, prompt, schema, ctx)
                        for k, (role, schema, prompt) in blind.items()}
             res = {k: fut.result() for k, fut in futures.items()}
@@ -222,6 +248,9 @@ class Meeting:
                                      f"**{t.one_line}**\n\n{t.memo}")
         out["valuation"] = self._record(mid, "blind", "valuation", "Is it priced in?",
                                         res["valuation"], res["valuation"].output.memo)
+        e = res["earnings"].output
+        out["earnings"] = self._record(mid, "blind", "earnings", "The latest results", res["earnings"],
+                                       f"**{e.latest_quarter}.** {e.memo}")
         pm = res["premortem"].output
         out["premortem"] = self._record(
             mid, "blind", "redteam", "Pre-mortem", res["premortem"],
@@ -249,7 +278,8 @@ class Meeting:
         memos = json.dumps({**out, "objections": objections, "rebuttal": rebuttal}, indent=1)
         notes = "\n\n".join(f"### {ROLES[k_role].title}\n{res[k].research}"
                              for k, k_role in (("macro", "macro"), ("thesis", "thesis"),
-                                               ("valuation", "valuation"), ("premortem", "redteam"))
+                                               ("valuation", "valuation"), ("earnings", "earnings"),
+                                               ("premortem", "redteam"))
                              if res[k].research)
         r = self._ask(mid, "factcheck", "checker",
                       f"{facts}\n\n## Memos\n{memos}\n\n## The members' research notes\n"
@@ -261,11 +291,19 @@ class Meeting:
         r = self._ask(mid, "risk", "risk", record + "\n\nWrite the portfolio-impact memo.",
                       agents.RiskMemo, ctx)
         risk_memo = self._record(mid, "committee", "risk", "Portfolio impact", r, r.output.memo)
+        record += f"\n\n## Risk officer\n{json.dumps(risk_memo, indent=1)}"
+
+        # --- the vote ------------------------------------------------------
+        votes = self.vote(mid, record, task, {**ctx, "valuation": out["valuation"]})
+        vote_md = "\n".join(f"- {ROLES[v['role']].title}: **{v['vote']}**. {v['reason']}" for v in votes)
+
+        # --- the verdict ---------------------------------------------------
         r = self._ask(mid, "cio", "cio",
-                      record + f"\n\n## Risk officer\n{json.dumps(risk_memo, indent=1)}\n\n"
-                      f"{task} Decide, grade it and answer every ranked objection.",
+                      record + f"\n\n## The members' votes\n{vote_md}\n\n"
+                      f"{task} Decide, grade it, answer every ranked objection, and answer every "
+                      "member whose vote differs from your decision.",
                       agents.CIODecision,
-                      {**ctx, "valuation": out["valuation"], "objections": objections})
+                      {**ctx, "valuation": out["valuation"], "objections": objections, "votes": votes})
         decision = self._record(mid, "committee", "cio", "Decision", r, r.output.rationale)
 
         # --- the risk engine -------------------------------------------------
@@ -274,7 +312,36 @@ class Meeting:
                                   decision=decision, outcome=outcome)
         # Day zero of the scorekeeper: the stock and the index, today.
         learning.record_start(self.store, self.steward, self.m, mid, ticker)
+        # Off the portfolio meeting's review list: the committee has looked again.
+        self.store.set_meta("review_queue", [q for q in self.store.get_meta("review_queue", [])
+                                             if q["ticker"] != ticker])
         return mid
+
+    def vote(self, mid: int, record: str, task: str, ctx: dict) -> list[dict]:
+        """Every member votes after the debate, in parallel, on the full record."""
+        prompt = (record + f"\n\n{task} You have read the whole debate. Cast your vote: buy (buy or "
+                  "add now), wait (watch or hold) or no (avoid, trim or sell), with the one fact "
+                  "that decides it.")
+
+        def one(key: str):
+            role = agents.voter(key)
+            res = self.backend.run(role, prompt, agents.Vote, {**ctx, "task": "vote", "voter": key})
+            return key, res
+        with ThreadPoolExecutor(max_workers=len(agents.VOTERS)) as ex:
+            results = list(ex.map(one, agents.VOTERS))
+        votes = []
+        for key, res in results:
+            self.cost += res.cost_usd
+            v = res.output
+            self.store.add_step(mid, "vote", key, "Vote", v.reason,
+                                {"output": agents.schema_json(v), "model": res.model,
+                                 "cost_usd": round(res.cost_usd, 4), "sources": []})
+            votes.append({"role": key, "vote": v.vote, "reason": v.reason})
+        self.store.set_cost(mid, self.cost)
+        if self.cost > self.m.limits.meeting_budget_usd:
+            raise OverBudget(f"the meeting has cost ${self.cost:.2f}, over the "
+                             f"${self.m.limits.meeting_budget_usd:.2f} budget")
+        return votes
 
     def execute(self, mid: int, ticker: str, d: dict) -> dict:
         book = self.pf.book()

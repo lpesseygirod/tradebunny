@@ -357,6 +357,48 @@
       "low_52w": 220.39999389648438,
       "source": "Yahoo Finance",
       "as_of": "2026-11-12T16:48:53+00:00"
+    },
+    {
+      "ticker": "BESI.AS",
+      "name": "BE Semiconductor Industries N.V",
+      "currency": "EUR",
+      "price": 158.0500030517578,
+      "price_eur": 158.0500030517578,
+      "forward_pe": 24.296919,
+      "trailing_pe": 43.539944,
+      "high_52w": 328.3999938964844,
+      "low_52w": 120.1500015258789,
+      "source": "Yahoo Finance",
+      "as_of": "2026-11-12T22:56:22+00:00",
+      "prev_close": 159.6999969482422
+    },
+    {
+      "ticker": "6857.T",
+      "name": "ADVANTEST CORP",
+      "currency": "JPY",
+      "price": 29985.0,
+      "price_eur": 169.72224705313235,
+      "forward_pe": 126.130486,
+      "trailing_pe": 38.055893,
+      "high_52w": 41990.0,
+      "low_52w": 18270.0,
+      "source": "Yahoo Finance",
+      "as_of": "2026-11-12T22:56:22+00:00",
+      "prev_close": 31440.0
+    },
+    {
+      "ticker": "ENTG",
+      "name": "Entegris, Inc.",
+      "currency": "USD",
+      "price": 153.2100067138672,
+      "price_eur": 138.5324897188118,
+      "forward_pe": 27.081873,
+      "trailing_pe": 59.61479,
+      "high_52w": 186.94000244140625,
+      "low_52w": 67.97000122070312,
+      "source": "Yahoo Finance",
+      "as_of": "2026-11-12T22:56:23+00:00",
+      "prev_close": 151.29
     }
   ]
 }

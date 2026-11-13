@@ -40,7 +40,7 @@ limits:
   tranche_spacing_days: 30
   max_meetings_per_month: 4    # idea meetings, to stop overtrading
   max_loss: 0.20               # if hit: move 10 points from stocks to euro bonds
-  meeting_budget_usd: 3.0      # stop a meeting that costs more than this
+  meeting_budget_usd: 6.0      # stop a meeting that costs more than this (5 researching members + votes)
   watchlist_deadline: "2027-03-31"   # unused reserve moves to the index ETFs
   proposal_days: 7             # a proposal you have not answered expires
   max_holding_reviews_per_month: 4

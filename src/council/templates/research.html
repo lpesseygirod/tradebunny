@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Research file · {{ r.name }} · TradeBunny{% endblock %}
+{% block content %}
+{% set o = r.o %}{% set d = r.d %}
+<div class="crumb"><a href="{{ url_for('pipeline') }}#research">Pipeline</a> › Research file · {{ r.name }}</div>
+<div class="page-head" style="margin-bottom:18px">
+  <div>
+    <h1>{{ r.name }} <a class="link" style="font-size:.95rem;font-family:var(--body);font-weight:600;letter-spacing:0" href="{{ url_for('stock_page', ticker=d.ticker) }}">the whole story →</a></h1>
+    <p class="small" style="font-size:.95rem">Research file #{{ d.id }} · {{ r.date }} · {{ d.reason }}{% if d.cost_usd %} · AI cost ${{ '%.2f'|format(d.cost_usd) }}{% endif %}</p>
+  </div>
+  {% if o %}<span class="pill {{ r.cls }}" style="padding:9px 16px;font-size:.9rem">{{ r.label }}</span>{% endif %}
+</div>
+
+{% if d.backend == 'scripted' %}
+<div class="notice">Scripted file: nothing was researched. With <code>ANTHROPIC_API_KEY</code> set, the research analyst reads annual reports,
+  filings and coverage, and every number comes with its period and source.</div>
+{% endif %}
+
+{% if d.status == 'running' %}<div class="thinking"><i></i>The research analyst is reading filings and writing; this takes a few minutes. Refresh to see it.</div>
+{% elif d.status == 'failed' %}<section class="card"><h3>The file could not be written</h3><p class="muted">{{ d.data.error }}</p></section>
+{% else %}
+<section class="card">
+  <div class="who" style="margin-bottom:8px"><span class="av c-green">AN</span><div><b>Research analyst</b><small>The homework the committee reads first</small></div></div>
+  <p style="font-size:1.1rem;font-weight:600;margin:8px 0">{{ o.summary }}</p>
+  <p class="small"><b>The analyst's call: {{ r.label }}.</b> {{ o.verdict_reason }}</p>
+</section>
+
+<div class="grid g2 mt">
+  <section class="card">
+    <h2>The five-point test</h2>
+    <p class="small muted">"Whoever wins, they must buy from this company." All five for grade A.</p>
+    <ul class="checks">
+      {% for key, label in [('few_suppliers','Few suppliers'),('slow_to_replace','Slow to replace'),('small_cost_critical','Small cost, critical'),('material_to_revenue','Material to revenue'),('self_funded','Self-funded')] %}
+      {% set t = o.business_test[key] %}
+      <li><span class="{{ 't' if t.passes == 'yes' else 'x' if t.passes == 'no' else '' }}">{{ {'yes':'✓','no':'✗','unclear':'?'}[t.passes] }}</span>
+        <span><b>{{ label }}</b><div class="small muted">{{ t.evidence }}</div></span></li>
+      {% endfor %}
+    </ul>
+  </section>
+  <section class="card">
+    <h2>How it makes money</h2><p class="small">{{ o.how_it_makes_money }}</p>
+    <h3>Financials</h3><p class="small">{{ o.financials }}</p>
+    <h3>Valuation</h3><p class="small">{{ o.valuation }}</p>
+    {% if r.facts.price %}<p class="tiny muted">Price at the time: {{ '%.2f'|format(r.facts.price) }} {{ r.facts.currency }} · forward P/E {{ '%.1f'|format(r.facts.forward_pe) if r.facts.forward_pe else '—' }} · {{ r.facts.source }}, {{ r.facts.as_of|stamp }}</p>{% endif %}
+  </section>
+</div>
+
+<div class="grid g2 mt">
+  <section class="card">
+    <h2>Management</h2><p class="small">{{ o.management }}</p>
+    <h3>Competition</h3><p class="small">{{ o.competition }}</p>
+  </section>
+  <section class="card">
+    <h2>Risks</h2><ul class="small">{% for x in o.risks %}<li>{{ x }}</li>{% endfor %}</ul>
+    <h3>What would change our mind</h3><ul class="small">{% for x in o.what_would_change_our_mind %}<li>{{ x }}</li>{% endfor %}</ul>
+  </section>
+</div>
+
+{% if r.sources %}
+<section class="card mt"><h2>Sources</h2>
+  <ul class="small">{% for s in r.sources %}<li><a href="{{ s.url }}" target="_blank" rel="noopener noreferrer">{{ s.title }}</a>{% if s.date %} · {{ s.date }}{% endif %}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+{% endif %}
+
+{% if r.others %}
+<section class="card mt"><h2>Earlier files on {{ r.name }}</h2>
+  <ul class="rows">{% for x in r.others %}<li><a href="{{ url_for('research_page', did=x.id) }}" style="color:var(--ink)"><b>{{ x.created_at|day }}</b></a>
+    <span class="grow small muted">{{ x.reason }}</span><span class="pill notyet">{{ x.status }}</span></li>{% endfor %}</ul>
+</section>
+{% endif %}
+{% endblock %}
+{% block footer %}Web pages and filings are data the analyst reads, never instructions. Numbers carry their period and source.{% endblock %}

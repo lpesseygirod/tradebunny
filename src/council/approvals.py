@@ -127,6 +127,8 @@ def approve(store: Store, pf: Portfolio, m: Mandate, pid: int, by: str = "you") 
             t = pf.sell(p["ticker"], None if p["action"] == "sell" else s.amount_eur,
                         p["meeting_id"], note=f"breaker: {p['data'].get('breaker')}")
             trades += [t] if t else []
+        elif p["action"] == "swap":
+            trades += _swap(store, pf, m, p)
         elif p["action"] == "deadline":
             trades += _buy_index(pf, m, p["amount_eur"])
             store.set_meta("deadline_done", now()[:10])
@@ -148,6 +150,35 @@ def approve(store: Store, pf: Portfolio, m: Mandate, pid: int, by: str = "you") 
                        "You approved" if by == "you" else "Approved by the autopilot", body,
                        {"proposal": pid, "trades": trades, "planned": planned})
     return {"status": "approved", "trades": trades, "planned": planned}
+
+
+def _swap(store: Store, pf: Portfolio, m: Mandate, p: dict) -> list[dict]:
+    """Sell one holding in full, then buy the bench name in tranches. Both
+    halves are checked BEFORE anything is sold, so a buy the rules would now
+    refuse never leaves a sale behind."""
+    from .review import size_swap
+    sell, buy = p["data"]["sell"], p["data"]["buy"]
+    book = pf.book()
+    if book.holdings.get(sell, 0.0) <= 0:
+        _fail(store, p, f"{m.name_of(sell)} is no longer held")
+    reason = f"swap: replaced by {m.name_of(buy)}. {p['data'].get('reason') or ''}".strip()
+    s_sell = risk.size_sell(sell, "sell", reason, book, m)
+    s_buy = size_swap(pf, m, sell, buy, p["conviction"])
+    verdict = (store.meeting(p["data"]["buy_meeting"]) or {}).get("decision") or {}
+    rules, _ = risk.policy(buy, verdict, m, pf.steward.quote(buy))   # the buy verdict, at today's price
+    broken = [c for c in rules if c.blocking and not c.ok]
+    if not s_sell.allowed or not s_buy.allowed or broken:
+        why = "; ".join(c.detail for c in s_sell.blocked_by + s_buy.blocked_by + broken)
+        _fail(store, p, f"The rules no longer allow it: {why}")
+    store.cancel_tranches(sell)
+    trades = []
+    t = pf.sell(sell, None, p["meeting_id"], note=reason)
+    trades += [t] if t else []
+    index_need = sum(eur for src, eur in s_buy.funding if src.startswith("index"))
+    if index_need > 0:
+        trades += _sell_index(pf, m, index_need, p["meeting_id"])
+    trades += pf.plan(buy, s_buy.amount_eur, p["meeting_id"], note="Swap")
+    return trades
 
 
 def _fail(store: Store, p: dict, why: str, trades: Optional[list] = None):

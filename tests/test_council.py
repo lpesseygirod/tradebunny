@@ -170,7 +170,9 @@ class TestMeeting:
         assert mt["status"] == "done"
         phases = [s["phase"] for s in steps]
         assert phases[:2] == ["gate", "facts"]
-        assert phases.count("blind") == 4 and phases.count("cross") == 2
+        assert phases.count("blind") == 5 and phases.count("cross") == 2
+        assert phases.count("vote") == len(agents.VOTERS)
+        assert phases.index("vote") < max(i for i, x in enumerate(phases) if x == "committee")  # CIO after the vote
         assert "committee" in phases and phases[-1] in ("risk", "trade")
 
     def test_a_rejected_name_never_reaches_an_agent(self, st, steward, m, pf):
@@ -575,7 +577,7 @@ def test_a_holding_at_its_add_level_is_reviewed_now(st, steward, m, pf):
 
 class TestAnswerFormats:
     NAMES = ["MacroMemo", "ThesisMemo", "ValuationMemo", "Premortem", "Objections",
-             "Rebuttal", "FactCheck", "RiskMemo", "CIODecision"]
+             "Rebuttal", "FactCheck", "RiskMemo", "CIODecision", "EarningsMemo", "Vote"]
 
     def test_no_free_form_fields_reach_the_api(self):
         """Structured output forces additionalProperties: false on every object,
@@ -791,3 +793,291 @@ class TestStockPage:
         mt = meeting_mod.Meeting(st, steward, m, pf, agents.ScriptedBackend())
         text = mt.facts_md(mt.fact_sheet("TSM"))
         assert "record October revenue" in text and "never instructions" in text
+
+
+
+# ------------------------------------------------------------ the stages
+
+from council import approvals, review, scan, screening, watch  # noqa: E402
+
+
+@pytest.fixture
+def ms(m, st):
+    """The mandate with the scout's shortlist attached, as the app runs it."""
+    return screening.attach(m, st)
+
+
+@pytest.fixture
+def pfs(st, steward, ms):
+    p = portfolio.Portfolio(st, steward, ms)
+    p.start()
+    return p
+
+
+class Scout(agents.ScriptedBackend):
+    """A fake AI scout: one good idea, one held, one rejected, one with no price."""
+    name = "fake"
+
+    def run(self, role, prompt, schema, context):
+        if schema is screening.Screen:
+            idea = lambda t, n: screening.Idea(ticker=t, name=n, theme="x", chokepoint="y", likely_passes=4,
+                                              open_question="z", ai=False, taiwan=False)
+            out = screening.Screen(ideas=[idea("entg", "Entegris"), idea("CME", "CME"),
+                                          idea("NVDA", "Nvidia"), idea("NOPE.XX", "Nope")], memo="m")
+            return agents.Result(output=out, model="fake")
+        return super().run(role, prompt, schema, context)
+
+
+class TestScout:
+    def test_code_turns_away_known_and_unpriced_names(self, st, steward, ms):
+        r = screening.run_screen(st, steward, ms, Scout())
+        assert [x["ticker"] for x in r["added"]] == ["ENTG"]          # tickers are normalised
+        why = {x["ticker"]: x["why"] for x in r["turned_away"]}
+        assert "model portfolio" in why["CME"] and "rejected" in why["NVDA"]
+        assert "no price" in why["NOPE.XX"]
+
+    def test_an_idea_is_never_suggested_twice(self, st, steward, ms):
+        screening.run_screen(st, steward, ms, Scout())
+        r = screening.run_screen(st, steward, ms, Scout())
+        assert not r["added"] and "suggested before" in r["turned_away"][0]["why"]
+
+    def test_it_looks_once_a_week(self, st, steward, ms):
+        assert screening.screen_due(st, ms)
+        screening.run_screen(st, steward, ms, agents.ScriptedBackend())
+        assert not screening.screen_due(st, ms)
+
+    def test_answer_formats_have_no_free_form_fields(self):
+        import json
+        from anthropic.lib._parse._transform import transform_schema
+        for schema in (screening.Screen, screening.Dossier, watch.AlertCheck, review.BookMemo,
+                       review.Challenge, review.PortfolioDecision):
+            assert '"additionalProperties": {' not in json.dumps(transform_schema(schema.model_json_schema()))
+
+
+class TestResearchFiles:
+    def test_a_file_that_says_send_shortlists_the_idea(self, st, steward, ms):
+        b = agents.ScriptedBackend()
+        screening.run_screen(st, steward, ms, b)
+        assert "BESI.AS" not in ms.universe()                        # an idea is not yet debatable
+        screening.research_new_ideas(st, steward, ms, b)
+        assert st.candidate("BESI.AS")["status"] == "shortlisted"
+        assert "BESI.AS" in ms.universe() and risk.gate("BESI.AS", ms, 0)[0].ok
+
+    def test_dropping_an_idea_takes_it_out_of_the_universe(self, st, steward, ms):
+        b = agents.ScriptedBackend()
+        screening.run_screen(st, steward, ms, b)
+        screening.research_new_ideas(st, steward, ms, b)
+        assert screening.drop(st, "BESI.AS")
+        assert "BESI.AS" not in ms.universe()
+
+    def test_the_weekly_budget(self, st, steward, ms):
+        b = agents.ScriptedBackend()
+        for t in ("CME", "VMC", "MET", "ALV.DE"):
+            screening.write_dossier(st, steward, ms, t, b)
+        assert screening.research_left(st, ms) == 0
+        assert not screening.needs_research(st, ms, "CME") and screening.needs_research(st, ms, "PRY.MI")
+
+    def test_the_committee_reads_the_file(self, st, steward, ms, pfs):
+        screening.write_dossier(st, steward, ms, "TSM", agents.ScriptedBackend())
+        mt = meeting.Meeting(st, steward, ms, pfs, agents.ScriptedBackend())
+        assert "## The research file" in mt.facts_md(mt.fact_sheet("TSM"))
+
+    def test_a_failure_is_recorded_not_raised(self, st, steward, ms):
+        class Broken(agents.ScriptedBackend):
+            name = "fake"
+            def run(self, *a, **k):
+                raise RuntimeError("API down")
+        d = st.dossier(screening.write_dossier(st, steward, ms, "TSM", Broken()))
+        assert d["status"] == "failed" and "API down" in d["data"]["error"]
+
+    def test_shortlisted_ideas_join_the_agenda(self, st, steward, ms, pfs):
+        b = agents.ScriptedBackend()
+        screening.run_screen(st, steward, ms, b)
+        screening.research_new_ideas(st, steward, ms, b)
+        plan = scan.agenda(st, pfs, ms, steward.quotes(pfs.tickers_needed()))
+        assert any(c["ticker"] == "BESI.AS" and "scout" in c["reason"] for c in plan["picked"])
+
+
+class TestCommittee:
+    def test_the_cio_answers_the_members_who_disagree(self, st, steward, m, pf):
+        mt, steps = run(st, steward, m, pf, "HWM")
+        votes = [s for s in steps if s["phase"] == "vote"]
+        assert {s["role"] for s in votes} == set(agents.VOTERS)
+        assert mt["decision"]["dissent_answer"]
+
+    def test_votes_run_on_the_cheaper_model_without_research(self):
+        v = agents.voter("thesis")
+        assert v.model == agents.SONNET and not v.web and v.system == agents.ROLES["thesis"].system
+
+
+def move(steward, ticker, change):
+    """Pretend `ticker` moved by `change` today (e.g. -0.15)."""
+    from dataclasses import replace as dc_replace
+    exp, q = steward._cache[ticker]
+    steward._cache[ticker] = (exp, dc_replace(q, prev_close=q.price / (1 + change)))
+
+
+class Convene(agents.ScriptedBackend):
+    name = "fake"
+
+    def run(self, role, prompt, schema, context):
+        if schema is watch.AlertCheck:
+            return agents.Result(output=watch.AlertCheck(what_happened="w", breaker_fired="b",
+                                                         verdict="convene", memo="m"), model="fake")
+        return super().run(role, prompt, schema, context)
+
+
+class TestWatch:
+    def test_a_big_fall_raises_one_alert(self, st, steward, ms, pfs):
+        move(steward, "CME", -0.15)
+        assert len(watch.find_events(st, steward, ms, pfs)) == 1
+        assert watch.find_events(st, steward, ms, pfs) == []            # never twice
+        assert st.alerts()[0]["kind"] == "drop"
+
+    def test_a_small_move_is_ignored(self, st, steward, ms, pfs):
+        move(steward, "CME", -0.05)
+        assert watch.find_events(st, steward, ms, pfs) == []
+
+    def test_results_days_raise_an_alert(self, st, steward, ms, pfs, monkeypatch):
+        from datetime import date
+        today = date.today().isoformat()
+        monkeypatch.setattr(steward, "earnings_dates", lambda t: [today] if t == "ASML.AS" else [])
+        ids = watch.find_events(st, steward, ms, pfs)
+        assert [st.alert(i)["ticker"] for i in ids] == ["ASML.AS"]
+
+    def test_without_a_key_it_is_recorded_not_judged(self, st, steward, ms, pfs):
+        move(steward, "CME", -0.15)
+        events = watch.run(st, steward, ms, pfs, None)
+        assert "needs the AI key" in events[0] and st.alerts()[0]["status"] == "open"
+
+    def test_convene_calls_an_urgent_review_but_never_sells_by_itself(self, st, steward, ms, pfs):
+        move(steward, "CME", -0.15)
+        before = len(st.trades())
+        events = watch.run(st, steward, ms, pfs, Convene())
+        a = st.alerts()[0]
+        assert a["status"] == "convene" and a["meeting_id"]
+        assert st.meeting(a["meeting_id"])["kind"] == "holding" and "urgent review" in events[0]
+        assert len(st.trades()) == before
+
+
+class BuyAll(agents.ScriptedBackend):
+    def _cio(self, c):
+        return super()._cio(c).model_copy(update={"decision": "buy", "grade": "A", "conviction": "core"})
+
+
+class MarkDown(agents.ScriptedBackend):
+    def _cio(self, c):
+        return super()._cio(c).model_copy(update={"decision": "hold", "grade": "C", "conviction": "none"})
+
+
+class TestPortfolioMeeting:
+    def test_it_ranks_the_whole_book(self, st, steward, ms, pfs):
+        mid = review.PortfolioMeeting(st, steward, ms, pfs, agents.ScriptedBackend()).run()
+        mt = st.meeting(mid)
+        assert mt["status"] == "done" and mt["kind"] == "portfolio" and mt["decision"]["decision"] == "keep"
+        cio = next(s for s in st.steps(mid) if s["role"] == "cio")
+        assert len(cio["data"]["output"]["ranking"]) == risk.stock_count(pfs.book(), ms)
+        assert len(st.get_meta("review_queue")) <= review.MAX_QUEUE
+        assert not review.due(st)
+
+    def test_a_blocked_buy_waits_on_the_bench(self, st, steward, ms, pfs):
+        run(st, steward, ms, pfs, "HWM", BuyAll())                    # 10 of 10: blocked
+        bench = review.bench(st, steward, ms, pfs)
+        assert [b["ticker"] for b in bench] == ["HWM"]
+
+    def test_a_swap_pairs_two_committee_verdicts(self, st, steward, ms, pfs):
+        run(st, steward, ms, pfs, "HWM", BuyAll())
+        run(st, steward, ms, pfs, "CME", MarkDown())
+        mid = review.PortfolioMeeting(st, steward, ms, pfs, agents.ScriptedBackend()).run()
+        o = st.meeting(mid)["outcome"]
+        p = st.proposal(o["proposal"])
+        assert p["action"] == "swap" and p["data"]["sell"] == "CME" and p["data"]["buy"] == "HWM"
+        assert p["status"] == "pending"                               # waits for you
+        approvals.approve(st, pfs, ms, p["id"])
+        q = pfs.quantities()
+        assert q.get("CME", 0) <= 1e-9 and q["HWM"] > 0
+        assert risk.stock_count(pfs.book(), ms) == 10
+        assert any(t["ticker"] == "HWM" for t in st.tranches("planned"))
+
+    def test_a_holding_not_marked_down_is_reviewed_first(self, st, steward, ms, pfs):
+        run(st, steward, ms, pfs, "HWM", BuyAll())
+
+        class WantsSwap(agents.ScriptedBackend):
+            name = "fake"
+            def run(self, role, prompt, schema, context):
+                if schema is review.PortfolioDecision:
+                    out = review.PortfolioDecision(ranking=[], swap_sell="VMC", swap_buy="HWM",
+                                                   swap_reason="r", review_next=[], memo="m")
+                    return agents.Result(output=out, model="fake")
+                if schema is review.BookMemo:
+                    return agents.Result(output=review._scripted_book(review.facts(st, steward, ms, pfs)))
+                return agents.Result(output=review.Challenge(weakest=[], best_outside="none", memo="m"))
+        mid = review.PortfolioMeeting(st, steward, ms, pfs, WantsSwap()).run()
+        o = st.meeting(mid)["outcome"]
+        assert not o["proposal"] and "VMC" in o["review_queue"]
+        plan = scan.agenda(st, pfs, ms, steward.quotes(pfs.tickers_needed()))
+        assert any(c["ticker"] == "VMC" for c in plan["picked"])
+
+    def test_a_swap_that_breaks_the_rules_sells_nothing(self, st, steward, ms, pfs):
+        run(st, steward, ms, pfs, "HWM", BuyAll())
+        run(st, steward, ms, pfs, "CME", MarkDown())
+        mid = review.PortfolioMeeting(st, steward, ms, pfs, agents.ScriptedBackend()).run()
+        pid = st.meeting(mid)["outcome"]["proposal"]
+        pfs.buy("WM", 400)                                           # an 11th stock appears meanwhile
+        cme = pfs.quantities()["CME"]
+        with pytest.raises(approvals.ApprovalError):
+            approvals.approve(st, pfs, ms, pid)
+        assert pfs.quantities()["CME"] == cme                        # nothing was sold
+
+
+class TestDailyStages:
+    def test_the_evening_runs_every_stage_once(self, st, steward, ms, pfs):
+        b = agents.ScriptedBackend()
+        events = scan.daily(st, steward, ms, pfs, b)
+        text = " ".join(events)
+        assert "Scout:" in text and "Research file on" in text and "Portfolio meeting #" in text
+        again = " ".join(scan.daily(st, steward, ms, pfs, b))
+        assert "Scout:" not in again and "Portfolio meeting #" not in again
+
+    def test_without_a_key_only_bookkeeping_runs(self, st, steward, ms, pfs):
+        events = " ".join(scan.daily(st, steward, ms, pfs, None))
+        assert "Scout" not in events and not st.candidates()
+
+
+class TestStagePages:
+    @pytest.fixture
+    def c(self, st, steward, m):
+        from council import web
+        app = web.create_app(store=st, steward=steward, mandate=m,
+                             backend_factory=agents.ScriptedBackend, token="", run_async=False)
+        app.config["TESTING"] = True
+        cl = app.test_client()
+        cl.post("/start")
+        return cl
+
+    def test_the_pipeline_and_its_buttons(self, c, st):
+        assert b"From idea to trade" in c.get("/pipeline").data
+        c.post("/screen")
+        page = c.get("/pipeline").data
+        assert b"BE Semiconductor" in page and b"Shortlisted" in page
+        did = st.dossiers()[0]["id"]
+        assert b"five-point test" in c.get(f"/research/{did}").data
+        assert b"Why the scout suggested it" in c.get("/stocks/BESI.AS").data
+        c.post("/candidates/BESI.AS/drop")
+        assert st.candidate("BESI.AS")["status"] == "dropped"
+
+    def test_the_portfolio_meeting_page(self, c, st):
+        r = c.post("/portfolio-meeting")
+        page = c.get(r.headers["Location"]).data
+        assert b"every holding ranked" in page and b"Swap rules" in page
+        assert b"Portfolio meeting" in c.get("/meetings").data
+
+    def test_a_stock_meeting_shows_the_vote(self, c):
+        r = c.post("/meetings", data={"ticker": "TSM"})
+        page = c.get(r.headers["Location"]).data
+        for text in (b"The vote", b"Earnings analyst", b"To the members who voted otherwise"):
+            assert text in page, text
+
+    def test_research_from_the_stock_page(self, c, st):
+        c.post("/research", data={"ticker": "TSM"})
+        assert st.latest_dossier("TSM") and b"The research file" in c.get("/stocks/TSM").data

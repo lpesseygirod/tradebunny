@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ s.name }} · TradeBunny{% endblock %}
 {% block content %}
-<div class="crumb"><a href="{{ url_for('portfolio_page') }}">Portfolio</a> › {{ s.name }}</div>
+<div class="crumb">{% if s.candidate and not s.pos %}<a href="{{ url_for('pipeline') }}#scout">Pipeline</a>{% else %}<a href="{{ url_for('portfolio_page') }}">Portfolio</a>{% endif %} › {{ s.name }}</div>
 <div class="page-head" style="margin-bottom:18px">
   <div>
     <h1>{{ s.name }}</h1>
@@ -35,7 +35,7 @@
 
 <div class="grid g2 mt">
   <section class="card">
-    <div class="eyebrow">{{ 'Why we own it' if s.pos else ('Why it was rejected' if s.rejected else 'Why we are watching it') }}</div>
+    <div class="eyebrow">{{ 'Why we own it' if s.pos else ('Why it was rejected' if s.rejected else ('Why the scout suggested it' if s.candidate and s.why_source == 'the scout' else 'Why we are watching it')) }}</div>
     <p style="font-size:1.15rem;font-weight:600;margin:10px 0 4px">{{ s.rejected or s.why or 'No thesis on file yet: convene the council.' }}</p>
     {% if not s.rejected %}<p class="tiny muted">From {{ s.why_source }}.</p>{% endif %}
     {% if s.committee_trigger %}<h3 style="margin-top:16px">The committee's trigger</h3><p class="small">{{ s.committee_trigger }}</p>{% endif %}
@@ -60,6 +60,36 @@
     <div class="eyebrow">The latest verdict</div>
     <p class="muted" style="margin-top:10px">The council has not discussed {{ s.name }} yet.{% if s.pos %} It is held because it is in your committee's model portfolio.{% endif %}</p>
     {% endif %}
+  </section>
+</div>
+
+<div class="grid g2 mt">
+  <section class="card">
+    {% set rf = s.dossier %}
+    <div class="card-head"><h2>The research file</h2>
+      {% if rf %}<a class="link" href="{{ url_for('research_page', did=rf.id) }}">Read it all →</a>{% endif %}</div>
+    {% if rf %}{% set o = rf.data.output %}
+      <p class="small muted" style="margin:4px 0 8px">{{ rf.created_at|day }} · {{ rf.reason }}{% if rf.backend == 'scripted' %} · scripted, not researched{% endif %}</p>
+      <p>{{ o.summary }}</p>
+      <p class="small">{% for key, label in [('few_suppliers','Few suppliers'),('slow_to_replace','Slow to replace'),('small_cost_critical','Small cost, critical'),('material_to_revenue','Material to revenue'),('self_funded','Self-funded')] %}{% set t = o.business_test[key] %}<span class="testmark {{ t.passes }}">{{ {'yes':'✓','no':'✗','unclear':'?'}[t.passes] }} {{ label }}</span>{% endfor %}</p>
+      <p class="small"><span class="pill {{ s.VERDICT_CLS[o.verdict] }}">{{ s.VERDICT_LABEL[o.verdict] }}</span> {{ o.verdict_reason }}</p>
+    {% else %}
+      <p class="muted" style="margin-top:8px">No research file yet. The analyst writes one before the committee meets on it, or now:</p>
+    {% endif %}
+    {% if s.in_universe or s.candidate %}<form method="post" action="{{ url_for('run_research') }}" style="margin-top:8px">
+      <input type="hidden" name="ticker" value="{{ s.ticker }}"><input type="hidden" name="next" value="{{ url_for('stock_page', ticker=s.ticker) }}">
+      <button class="btn light sm">{{ 'Rewrite the file' if rf else 'Write the research file' }}</button></form>{% endif %}
+  </section>
+  <section class="card">
+    <h2 style="margin-bottom:6px">Watch alerts</h2>
+    <p class="tiny muted" style="margin:0 0 6px">Results days and one-day falls of {{ (mandate.limits.big_drop * 100)|round|int }}% or more, judged by the sentinel against the thesis breakers.</p>
+    <ul class="rows">
+      {% for a in s.alerts %}<li style="align-items:flex-start"><span class="small muted" style="width:56px;flex:0 0 56px">{{ a.date }}</span>
+        <div class="grow"><b class="small">{{ a.reason }}</b>{% if a.what %}<div class="small muted">{{ a.what }}</div>{% endif %}
+          {% if a.meeting_id %}<div class="tiny"><a class="link" href="{{ url_for('meeting_page', mid=a.meeting_id) }}">urgent review #{{ a.meeting_id }}</a></div>{% endif %}</div>
+        <span class="pill {{ a.cls }}">{{ a.label }}</span></li>
+      {% else %}<li class="muted small">{{ 'No alerts.' if s.pos else 'Alerts are for stocks we hold.' }}</li>{% endfor %}
+    </ul>
   </section>
 </div>
 

@@ -21,7 +21,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS meetings (
     id INTEGER PRIMARY KEY,
     ticker TEXT NOT NULL,
-    kind TEXT NOT NULL,              -- idea | holding
+    kind TEXT NOT NULL,              -- idea | holding | portfolio (ticker PORTFOLIO)
     status TEXT NOT NULL,            -- running | done | stopped | failed
     backend TEXT NOT NULL,           -- claude | scripted
     started_at TEXT NOT NULL,
@@ -112,6 +112,37 @@ CREATE TABLE IF NOT EXISTS lessons (
     status TEXT NOT NULL DEFAULT 'proposed',  -- proposed | approved | rejected
     created_at TEXT NOT NULL,
     decided_at TEXT
+);
+CREATE TABLE IF NOT EXISTS candidates (
+    ticker TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL,            -- new | shortlisted | watching | dropped
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    data TEXT                        -- JSON: the scout's idea, why the status changed
+);
+CREATE TABLE IF NOT EXISTS dossiers (
+    id INTEGER PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    status TEXT NOT NULL,            -- running | done | failed
+    backend TEXT NOT NULL,
+    reason TEXT DEFAULT '',          -- why it was written
+    created_at TEXT NOT NULL,
+    cost_usd REAL DEFAULT 0,
+    data TEXT                        -- JSON: the file, its sources, the numbers it saw
+);
+CREATE TABLE IF NOT EXISTS alerts (
+    id INTEGER PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    kind TEXT NOT NULL,              -- drop | earnings
+    key TEXT NOT NULL UNIQUE,        -- one alert per event, e.g. drop:IFX.DE:2026-11-12
+    reason TEXT NOT NULL,
+    status TEXT NOT NULL,            -- open | noise | watch | convene | failed
+    backend TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    cost_usd REAL DEFAULT 0,
+    meeting_id INTEGER,              -- the review it escalated to
+    data TEXT
 );
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
@@ -373,6 +404,104 @@ class Store:
         with self._conn() as c:
             return c.execute("UPDATE lessons SET status=?, decided_at=? WHERE id=? AND status='proposed'",
                              (status, now(), lid)).rowcount == 1
+
+    # ----------------------------------------------------------- candidates
+
+    @staticmethod
+    def _row(r: sqlite3.Row) -> dict:
+        d = dict(r)
+        d["data"] = json.loads(d["data"]) if d.get("data") else {}
+        return d
+
+    def add_candidate(self, ticker: str, name: str, data: Any) -> bool:
+        """False if the scout already suggested this name once."""
+        with self._conn() as c:
+            n = c.execute("INSERT OR IGNORE INTO candidates(ticker,name,status,created_at,updated_at,data) "
+                          "VALUES(?,?,?,?,?,?)", (ticker, name, "new", now(), now(), json.dumps(data))).rowcount
+        return n == 1
+
+    def set_candidate(self, ticker: str, status: str, note: str = "") -> None:
+        cand = self.candidate(ticker)
+        if not cand:
+            return
+        data = cand["data"]
+        data.setdefault("history", []).append({"at": now(), "status": status, "note": note})
+        with self._conn() as c:
+            c.execute("UPDATE candidates SET status=?, updated_at=?, data=? WHERE ticker=?",
+                      (status, now(), json.dumps(data), ticker))
+
+    def candidate(self, ticker: str) -> Optional[dict]:
+        with self._conn() as c:
+            r = c.execute("SELECT * FROM candidates WHERE ticker=?", (ticker,)).fetchone()
+        return self._row(r) if r else None
+
+    def candidates(self, status: Optional[str] = None) -> list[dict]:
+        sql, args = "SELECT * FROM candidates", ()
+        if status:
+            sql, args = sql + " WHERE status=?", (status,)
+        with self._conn() as c:
+            return [self._row(r) for r in c.execute(sql + " ORDER BY created_at DESC", args).fetchall()]
+
+    # -------------------------------------------------------- research files
+
+    def add_dossier(self, ticker: str, backend: str, reason: str = "") -> int:
+        with self._conn() as c:
+            cur = c.execute("INSERT INTO dossiers(ticker,status,backend,reason,created_at) VALUES(?,?,?,?,?)",
+                            (ticker, "running", backend, reason, now()))
+            return int(cur.lastrowid)
+
+    def finish_dossier(self, did: int, status: str, data: Any, cost_usd: float = 0.0) -> None:
+        with self._conn() as c:
+            c.execute("UPDATE dossiers SET status=?, data=?, cost_usd=? WHERE id=?",
+                      (status, json.dumps(data), cost_usd, did))
+
+    def dossier(self, did: int) -> Optional[dict]:
+        with self._conn() as c:
+            r = c.execute("SELECT * FROM dossiers WHERE id=?", (did,)).fetchone()
+        return self._row(r) if r else None
+
+    def dossiers(self, ticker: Optional[str] = None, status: Optional[str] = None) -> list[dict]:
+        sql, args, where = "SELECT * FROM dossiers", [], []
+        if ticker:
+            where.append("ticker=?"); args.append(ticker)
+        if status:
+            where.append("status=?"); args.append(status)
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        with self._conn() as c:
+            return [self._row(r) for r in c.execute(sql + " ORDER BY id DESC", args).fetchall()]
+
+    def latest_dossier(self, ticker: str) -> Optional[dict]:
+        return next(iter(self.dossiers(ticker, "done")), None)
+
+    # --------------------------------------------------------------- alerts
+
+    def add_alert(self, ticker: str, kind: str, key: str, reason: str, data: Any = None) -> Optional[int]:
+        """None if this event was already raised (one alert per event)."""
+        with self._conn() as c:
+            cur = c.execute("INSERT OR IGNORE INTO alerts(ticker,kind,key,reason,status,created_at,data) "
+                            "VALUES(?,?,?,?,?,?,?)", (ticker, kind, key, reason, "open", now(),
+                                                      json.dumps(data or {})))
+            return int(cur.lastrowid) if cur.rowcount == 1 else None
+
+    def update_alert(self, aid: int, **kw: Any) -> None:
+        if "data" in kw:
+            kw["data"] = json.dumps(kw["data"])
+        cols = ", ".join(f"{k}=?" for k in kw)
+        with self._conn() as c:
+            c.execute(f"UPDATE alerts SET {cols} WHERE id=?", (*kw.values(), aid))
+
+    def alert(self, aid: int) -> Optional[dict]:
+        with self._conn() as c:
+            r = c.execute("SELECT * FROM alerts WHERE id=?", (aid,)).fetchone()
+        return self._row(r) if r else None
+
+    def alerts(self, ticker: Optional[str] = None, limit: int = 100) -> list[dict]:
+        sql, args = "SELECT * FROM alerts", ()
+        if ticker:
+            sql, args = sql + " WHERE ticker=?", (ticker,)
+        with self._conn() as c:
+            return [self._row(r) for r in c.execute(sql + " ORDER BY id DESC LIMIT ?", (*args, limit)).fetchall()]
 
     # ----------------------------------------------------------- snapshots
 

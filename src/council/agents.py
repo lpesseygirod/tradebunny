@@ -1,6 +1,6 @@
 """The council's members: who they are, what they must answer, and how.
 
-Six roles from the committee design. Each one returns a structured answer
+Seven roles from the committee design, plus an earnings analyst. Each one returns a structured answer
 (a Pydantic model), so the interface can lay the debate out and the risk
 engine can read the CIO's verdict without parsing prose.
 
@@ -20,7 +20,7 @@ never instructions: every system prompt says so.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal, Optional, Protocol
 
 from pydantic import BaseModel, Field
@@ -93,6 +93,24 @@ class ValuationMemo(BaseModel):
     memo: str = Field(description="Markdown, under 200 words. Cite only fact-sheet numbers.")
 
 
+class EarningsMemo(BaseModel):
+    latest_quarter: str = Field(description="Which results and when, e.g. 'Q3 2026, reported 9 Nov 2026'")
+    revenue: str = Field(description="Growth, and against expectations, with source and date")
+    margins: str = Field(description="Margin trend, with source and date")
+    guidance: str = Field(description="What management guided next, and whether it was raised, kept or cut")
+    management_tone: str = Field(description="One sentence on the call: confident, defensive or evasive")
+    thesis_check: str = Field(description="Does this quarter support or weaken the thesis on file? One or two sentences")
+    stance: Stance
+    key_points: list[str] = Field(description=POINTS)
+    memo: str = Field(description="Markdown, under 200 words. Never set a price or a size.")
+
+
+class Vote(BaseModel):
+    vote: Literal["buy", "wait", "no"] = Field(
+        description="buy = buy or add now; wait = watch or hold; no = avoid, trim or sell")
+    reason: str = Field(description="One sentence: the single fact that decides your vote")
+
+
 class Objection(BaseModel):
     rank: int = Field(description="1 is the strongest objection")
     claim: str = Field(description="A specific, falsifiable risk. Never 'markets are uncertain'.")
@@ -161,6 +179,8 @@ class CIODecision(BaseModel):
     sell_if: str = Field(description="The thesis breaker that would make us sell, not a price")
     breaker_triggered: str = Field(description="For trim or sell only: the named breaker that has fired; else empty")
     answers_to_objections: list[Answer]
+    dissent_answer: str = Field(description="Answer every member whose vote differs from your decision, by "
+                                            "role, in one to three sentences; 'Unanimous' if nobody's does")
     rationale: str = Field(description="Markdown, under 250 words")
 
 
@@ -211,7 +231,8 @@ class Role:
 
 
 OPUS = "claude-opus-5-5"
-RED_TEAM_MODEL = "claude-sonnet-5-5"   # a different model, so dissent is not an echo
+SONNET = "claude-sonnet-5-5"
+RED_TEAM_MODEL = SONNET                # a different model, so dissent is not an echo
 
 ROLES: dict[str, Role] = {r.key: r for r in [
     Role("macro", "Macro strategist", "MS", OPUS, True,
@@ -235,6 +256,14 @@ ROLES: dict[str, Role] = {r.key: r for r in [
          "Cite the fact sheet for the current price and multiple, and cite your "
          "research notes, with source and date, for history and peers. A number "
          "with no source is your judgment and must be labelled as such. " + GUARD),
+    Role("earnings", "Earnings analyst", "EA", OPUS, True,
+         "You are the earnings analyst. You read the company's latest quarterly "
+         "results, the guidance and what management said on the call, from the "
+         "company's own release and filings first, then reputable coverage. Your "
+         "question: does the latest quarter support or weaken the thesis on file? "
+         "Report revenue, margins and guidance with the period and date; say plainly "
+         "if the results are older than four months or you could not find them. "
+         "Never set a price or a size. " + GUARD),
     Role("redteam", "Red team", "RT", RED_TEAM_MODEL, True,
          "You are the red team, the formal dissenter. You argue honestly against "
          "the idea with specific, falsifiable risks backed by evidence (short-"
@@ -262,7 +291,8 @@ ROLES: dict[str, Role] = {r.key: r for r in [
          "small); C = cheap but an unresolved business problem (watch); D = fails "
          "the business test (avoid). Answer each ranked objection explicitly. A "
          "strong business with a strong price critique goes to the watch list. "
-         "Rely only on claims the fact-checker confirmed or the fact sheet shows; "
+         "The members voted after the debate: answer every member whose vote "
+         "differs from your decision. Rely only on claims the fact-checker confirmed or the fact sheet shows; "
          "unsupported claims count for nothing. Buy or add only grade A, or grade "
          "B once its trigger has been reached, and say which trigger in "
          "buy_trigger. Conviction 'core' (a full position) only for grade A; "
@@ -270,6 +300,15 @@ ROLES: dict[str, Role] = {r.key: r for r in [
          "breaker has fired, never on price alone. Code checks every one of these "
          "rules after you decide and blocks a verdict that breaks them. " + GUARD),
 ]}
+
+
+VOTERS = ["macro", "thesis", "valuation", "earnings", "redteam", "risk"]
+
+
+def voter(key: str) -> Role:
+    """A member casting a vote: the same seat and instructions, on the cheaper
+    model and without research. The vote reads the whole record."""
+    return replace(ROLES[key], model=SONNET, web=False)
 
 
 # ------------------------------------------------------------------ backends
@@ -447,6 +486,39 @@ class ScriptedBackend:
             memo=f"Forward P/E **{pe:.1f}** from the fact sheet. Entry rule: {fair}." if pe
                  else f"No forward P/E in the fact sheet. Entry rule: {fair}.")
 
+    def _earnings(self, c: dict) -> EarningsMemo:
+        return EarningsMemo(
+            latest_quarter="Not read (scripted: no AI, no research)",
+            revenue="Not checked (scripted).", margins="Not checked (scripted).",
+            guidance="Not checked (scripted).", management_tone="Not heard (scripted).",
+            thesis_check="A scripted meeting cannot read results; the thesis on file stands untested.",
+            stance="neutral",
+            key_points=["Scripted: the latest results were not read.",
+                        "With an AI key this member reads the release, guidance and call."],
+            memo="Scripted earnings memo: no results were read. A real meeting checks the latest "
+                 "quarter against the thesis.")
+
+    def _vote(self, c: dict) -> Vote:
+        g = ((c.get("prior") or {}).get("grade") or "").upper()
+        g = g if g in ("A", "B", "C", "D") else ""
+        priced = (c.get("valuation") or {}).get("priced_in", "partly")
+        who = c["voter"]
+        if who == "valuation":
+            v = {"no": "buy", "partly": "wait", "yes": "no"}[priced]
+            why = f"Priced in: {priced}."
+        elif who == "thesis":
+            v = "buy" if g in ("A", "B") else "wait"
+            why = f"Grade {g or 'none'} on file."
+        elif who == "redteam":
+            v = "no" if priced == "yes" or g in ("C", "D", "") else "wait"
+            why = "The objections stand until results answer them."
+        elif who == "risk":
+            v = "wait" if c.get("ai") else "buy" if g in ("A", "B") else "wait"
+            why = "Adds to the AI-linked bet." if c.get("ai") else "Adds a source of return outside AI."
+        else:
+            v, why = "wait", "No new evidence in a scripted meeting."
+        return Vote(vote=v, reason=f"{why} (scripted)")
+
     def _premortem(self, c: dict) -> Premortem:
         breakers = (c.get("prior") or {}).get("breakers") or ["Its multiple falls back to its history"]
         return Premortem(
@@ -520,10 +592,16 @@ class ScriptedBackend:
             decision, conv, label = "watch", "none", "Watch: " + val["fair_entry"]
         else:
             decision, conv, label = "reject", "none", "Avoid"
+        mine = "buy" if decision in ("buy", "add") else "no" if decision in ("reject", "trim", "sell") else "wait"
+        against = [v for v in c.get("votes", []) if v["vote"] != mine]
+        dissent = ("Unanimous" if not against else
+                   "; ".join(f"{ROLES[v['role']].title} voted {v['vote']}" for v in against)
+                   + f": the rule decides, and it says {mine} (scripted).")
         return CIODecision(
             decision=decision, grade=g, conviction=conv, action_label=label,
             buy_trigger=val["fair_entry"] if decision == "watch" else "none",
             sell_if=sell_if, breaker_triggered="", answers_to_objections=answers,
+            dissent_answer=dissent,
             rationale=f"Scripted rule: grade {g} on file, priced in: {val['priced_in']}. "
                       "Buy only A, or B once its trigger is reached; otherwise watch or hold.")
 

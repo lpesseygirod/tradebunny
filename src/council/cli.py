@@ -4,6 +4,10 @@
     python -m council.cli start         open the paper portfolio, first tranche
     python -m council.cli meet TICKER   hold a meeting; a verdict becomes a proposal
     python -m council.cli scan          let the council pick its own agenda and meet
+    python -m council.cli screen        the scout looks for new ideas (stage 1)
+    python -m council.cli research TICKER   write a research file (stage 2)
+    python -m council.cli watch         earnings and big drops on what we own (stage 5)
+    python -m council.cli portfolio-meeting   the monthly look at the whole book
     python -m council.cli proposals     what is waiting for your OK
     python -m council.cli approve ID    approve a proposal: re-check the rules, then trade
     python -m council.cli reject ID     reject it: nothing is traded
@@ -32,13 +36,14 @@ import tempfile
 
 
 def _parts(offline: bool = False):
-    from . import data, mandate, paths, portfolio, store, web
+    from . import data, mandate, paths, portfolio, screening, store, web
     paths.load_env()
     if paths.book() == "autopilot" and not paths.mandate_path().exists():
         mandate.initialise()          # the autopilot book never runs on the example rules
     m = mandate.load()
     steward = data.Steward(snapshot=offline or os.getenv("COUNCIL_OFFLINE") == "1")
     st = store.Store()
+    screening.attach(m, st)           # the scout's shortlist joins the universe
     pf = portfolio.Portfolio(st, steward, m)
     return m, steward, st, pf, web.default_backend()
 
@@ -107,6 +112,61 @@ def cmd_scan(a) -> int:
         print(f"  #{mid} {m.name_of(mt['ticker'])}: {d.get('decision', mt['status'])} "
               f"{d.get('action_label', mt.get('error') or '')}")
     return cmd_proposals(a)
+
+
+def cmd_screen(a) -> int:
+    from . import screening
+    m, steward, st, pf, backend = _parts()
+    print(f"The scout is looking ({backend.name})...")
+    r = screening.run_screen(st, steward, m, backend)
+    if r.get("error"):
+        print(f"Failed: {r['error']}", file=sys.stderr)
+        return 1
+    for x in r["added"]:
+        print(f"+ {x['name']} ({x['ticker']}): {x['theme']}")
+    for x in r["turned_away"]:
+        print(f"  turned away {x['name']} ({x['ticker']}): {x['why']}")
+    if r["added"]:
+        print("Research files next: council research TICKER (the daily job writes them too).")
+    return 0
+
+
+def cmd_research(a) -> int:
+    from . import screening
+    m, steward, st, pf, backend = _parts()
+    print(f"Writing the research file on {a.ticker} ({backend.name})...")
+    d = st.dossier(screening.write_dossier(st, steward, m, a.ticker, backend, "Asked for by you"))
+    if d["status"] != "done":
+        print(f"Failed: {d['data'].get('error')}", file=sys.stderr)
+        return 1
+    o = d["data"]["output"]
+    print(o["summary"])
+    print(f"Verdict: {o['verdict'].replace('_', ' ')}: {o['verdict_reason']}")
+    return 0
+
+
+def cmd_watch(a) -> int:
+    from . import watch
+    m, steward, st, pf, backend = _parts()
+    events = watch.run(st, steward, m, pf, backend if backend.name == "claude" else None)
+    print("\n".join(f"- {e}" for e in events) or "Nothing to report: no results days or big drops.")
+    return 0
+
+
+def cmd_portfolio_meeting(a) -> int:
+    from . import review
+    m, steward, st, pf, backend = _parts()
+    if not pf.started:
+        print("Open the paper portfolio first: council start", file=sys.stderr)
+        return 2
+    print(f"The portfolio meeting ({backend.name})...")
+    mid = review.PortfolioMeeting(st, steward, m, pf, backend).run()
+    mt = st.meeting(mid)
+    o = mt.get("outcome") or {}
+    print(f"Meeting #{mid}: {mt['status']}. {o.get('summary') or mt.get('error') or ''}")
+    if o.get("review_queue"):
+        print("Next for the committee: " + ", ".join(m.name_of(t) for t in o["review_queue"]))
+    return 0
 
 
 def cmd_proposals(a) -> int:
@@ -234,6 +294,12 @@ def cmd_demo(a) -> int:
         pf.start()
         for t in ("TSM", "ASML.AS", "HWM", "AI.PA"):
             Meeting(st, steward, m, pf, backend).run(t)
+        from . import review, screening
+        screening.run_screen(st, steward, m, backend)              # stage 1: the scout
+        screening.research_new_ideas(st, steward, m, backend)      # stage 2: research files
+        for c in st.candidates("shortlisted")[:1]:                 # stage 3: one goes to committee
+            Meeting(st, steward, m, pf, backend).run(c["ticker"])
+        review.PortfolioMeeting(st, steward, m, pf, backend).run() # the monthly look
     os.environ["COUNCIL_BOOK"] = "main"
     print(f"Demo data in {home} (scripted members, saved prices). Opening the interface...")
     from . import web
@@ -254,6 +320,11 @@ def build_parser() -> argparse.ArgumentParser:
     mt.add_argument("ticker")
     sc = sub.add_parser("scan")
     sc.add_argument("--dry-run", action="store_true", help="show the agenda without meeting")
+    sub.add_parser("screen")
+    rs = sub.add_parser("research")
+    rs.add_argument("ticker")
+    sub.add_parser("watch")
+    sub.add_parser("portfolio-meeting")
     sub.add_parser("proposals")
     for name in ("approve", "reject"):
         x = sub.add_parser(name)
@@ -280,7 +351,8 @@ def main(argv=None) -> int:
     return {"init": cmd_init, "start": cmd_start, "meet": cmd_meet, "review": cmd_review,
             "scan": cmd_scan, "proposals": cmd_proposals, "approve": cmd_approve,
             "reject": cmd_reject, "daily": cmd_daily, "schedule": cmd_schedule, "scorecard": cmd_scorecard,
-            "lesson": cmd_lesson, "web": cmd_web,
+            "lesson": cmd_lesson, "web": cmd_web, "screen": cmd_screen, "research": cmd_research,
+            "watch": cmd_watch, "portfolio-meeting": cmd_portfolio_meeting,
             "demo": cmd_demo}[a.command](a)
 
 

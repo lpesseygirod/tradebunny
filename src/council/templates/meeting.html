@@ -4,16 +4,16 @@
 <div class="crumb"><a href="{{ url_for('meetings') }}">Meetings</a> › #{{ mt.id }} {{ title }}</div>
 <div class="page-head" style="margin-bottom:18px">
   <div>
-    <h1>{{ title }} <a class="link" style="font-size:.95rem;font-family:var(--body);font-weight:600;letter-spacing:0" href="{{ url_for('stock_page', ticker=mt.ticker) }}">the whole story →</a></h1>
+    <h1>{{ title }}{% if mt.kind != 'portfolio' %} <a class="link" style="font-size:.95rem;font-family:var(--body);font-weight:600;letter-spacing:0" href="{{ url_for('stock_page', ticker=mt.ticker) }}">the whole story →</a>{% endif %}</h1>
     <p class="small" style="font-size:.95rem">{{ subtitle }} · Meeting #{{ mt.id }} · {{ when }}
-      · {{ 'holding review' if mt.kind == 'holding' else 'idea meeting' }}</p>
+      · {{ {'holding': 'holding review', 'portfolio': 'the whole book', 'idea': 'idea meeting'}[mt.kind] }}</p>
   </div>
   <div style="display:flex;gap:10px;flex-wrap:wrap">
     {% if verdict %}<a class="pill dark" href="#verdict">Grade {{ verdict.d.grade if verdict.d.grade != 'not_graded' else '–' }} · {{ verdict.label }} · jump to verdict ↓</a>{% endif %}
     <span class="pill outline" id="cost">AI cost ${{ '%.2f'|format(mt.cost_usd or 0) }} of ${{ '%g'|format(mandate.limits.meeting_budget_usd) }} cap</span>
   </div>
 </div>
-<div id="debate">{% include "_debate.html" %}</div>
+<div id="debate">{% include partial %}</div>
 {% endblock %}
 {% block footer %}Members may only quote numbers from the data layer, each stamped with source and time.{% endblock %}
 {% block scripts %}
