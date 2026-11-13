@@ -112,6 +112,12 @@ def run_screen(store: Store, steward: Steward, m: Mandate, backend: agents.Backe
                  if learning.lessons_text(store) else "")
               + "Find three to five new chokepoint ideas, best first.")
     cost, sources = 0.0, []
+    from . import budget
+    if not budget.allows(store, m, backend):
+        result = {"at": now(), "added": [], "turned_away": [], "backend": backend.name,
+                  "error": "the monthly AI budget is used; the scout looks again next month"}
+        store.set_meta("last_screen", result)
+        return result
     try:
         if backend.name == "scripted":
             out = Screen(ideas=SCRIPTED_IDEAS, memo="Scripted scout: no research was done. These are "
@@ -119,6 +125,7 @@ def run_screen(store: Store, steward: Steward, m: Mandate, backend: agents.Backe
         else:
             res = backend.run(SCOUT, prompt, Screen, {"task": "screen"})
             out, cost, sources = res.output, res.cost_usd, res.sources
+            budget.record_scout(store, cost)
     except (RoleRefused, Exception) as e:          # recorded, never fatal
         result = {"at": now(), "added": [], "turned_away": [], "error": f"{type(e).__name__}: {e}",
                   "backend": backend.name}
@@ -245,6 +252,11 @@ def _scripted_dossier(name: str, idea: dict, prior: dict) -> Dossier:
 def write_dossier(store: Store, steward: Steward, m: Mandate, ticker: str,
                   backend: agents.Backend, reason: str = "") -> int:
     """Write (or rewrite) one research file. Never raises: a failure is recorded."""
+    from . import budget
+    if not budget.allows(store, m, backend):
+        did = store.add_dossier(ticker, backend.name, reason)
+        store.finish_dossier(did, "failed", {"reason": reason, "error": "the monthly AI budget is used"})
+        return did
     did = store.add_dossier(ticker, backend.name, reason)
     cand = store.candidate(ticker)
     idea = (cand or {}).get("data", {}).get("idea") or {}

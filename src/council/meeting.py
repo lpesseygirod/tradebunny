@@ -25,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from typing import Optional
 
-from . import agents, approvals, learning, quant, risk
+from . import agents, approvals, coded, learning, quant, risk
 from .agents import ROLES, Backend, RoleRefused
 from .data import DataError, Steward
 from .mandate import Mandate
@@ -211,6 +211,8 @@ class Meeting:
         return res
 
     def _record(self, mid: int, phase: str, role_key: str, title: str, res, body: str) -> dict:
+        if getattr(res, "reused", None):
+            title, res.cost_usd = f"{title} (reused: {res.reused})", 0.0
         data = {"output": agents.schema_json(res.output),
                 "sources": [s.model_dump() for s in res.sources],
                 "research": res.research,
@@ -244,6 +246,14 @@ class Meeting:
         checks = risk.gate(ticker, self.m, used if kind == "idea" else 0)
         self.store.add_step(mid, "gate", "code", "Mandate gate", "",
                             {"checks": [asdict(c) for c in checks]})
+        from . import budget
+        lim_ai = self.m.limits.monthly_ai_budget_usd
+        if self.backend.name != "scripted":
+            ok = budget.allows(self.store, self.m, self.backend)
+            checks.append(risk.Check("AI budget", ok, f"${budget.spent(self.store):.2f} of ${lim_ai:g} used this month"
+                                     + ("" if ok else ": the AI waits for next month"),
+                                     value=f"${budget.left(self.store, self.m):.2f} left"))
+            self.store.update_step_data(mid, "gate", {"checks": [asdict(c) for c in checks]})
         if any(not c.ok for c in checks):
             reason = next(c.detail for c in checks if not c.ok)
             self.store.finish_meeting(mid, "stopped", error=reason)
@@ -274,10 +284,15 @@ class Meeting:
                           f"{facts}\n\n{task} You have not seen anyone's case for it. Write a "
                           "pre-mortem: two years from now this position lost 40%. Why?"),
         }
+        # Reuse what has not changed: the macro view is the same for every stock
+        # for a week, and the earnings memo until the company reports again.
+        reused = {k: r for k, r in (("macro", self.reusable_macro()),
+                                    ("earnings", self.reusable_earnings(ticker))) if r}
         with ThreadPoolExecutor(max_workers=5) as ex:
             futures = {k: ex.submit(self._ask, mid, k, role, prompt, schema, ctx)
-                       for k, (role, schema, prompt) in blind.items()}
+                       for k, (role, schema, prompt) in blind.items() if k not in reused}
             res = {k: fut.result() for k, fut in futures.items()}
+        res.update(reused)
 
         out = {}
         out["macro"] = self._record(mid, "blind", "macro", "Regime memo", res["macro"],
@@ -305,21 +320,25 @@ class Meeting:
                                               probability=int(pr["probability"]), why=pr.get("why", ""))
 
         # --- cross-examination -------------------------------------------
+        # No second web search: each side argues from the research it already did.
         r = self._ask(mid, "objections", "redteam",
                       f"{facts}\n\n## The thesis analyst's memo\n{json.dumps(out['thesis'], indent=1)}"
-                      f"\n\n## Your own pre-mortem\n{pm.story}\n\nRank your top three objections "
+                      f"\n\n## Your own pre-mortem\n{pm.story}\n\n## Your research notes\n"
+                      f"{res['premortem'].research or '(none)'}\n\nRank your top three objections "
                       "to this thesis, each with evidence and a test that would prove it right.",
-                      agents.Objections, {**ctx, "thesis": out["thesis"]})
+                      agents.Objections, {**ctx, "thesis": out["thesis"], "research": False})
         objections = self._record(mid, "cross", "redteam", "Top objections", r,
                                   "\n".join(f"{o.rank}. **{o.claim}** {o.evidence}"
                                             for o in r.output.objections))
         r = self._ask(mid, "rebuttal", "thesis",
                       f"{facts}\n\n## Your thesis\n{json.dumps(out['thesis'], indent=1)}\n\n"
                       f"## The red team's objections\n{json.dumps(objections, indent=1)}\n\n"
+                      f"## Your research notes\n{res['thesis'].research or '(none)'}\n\n"
                       "You get one rebuttal. Answer each objection; concede where the evidence "
                       "is against you.",
-                      agents.Rebuttal, {**ctx, "objections": objections})
+                      agents.Rebuttal, {**ctx, "objections": objections, "research": False})
         rebuttal = self._record(mid, "cross", "thesis", "Rebuttal", r, r.output.memo)
+        rebuttal_out = rebuttal
 
         # --- committee ---------------------------------------------------
         memos = json.dumps({**out, "objections": objections, "rebuttal": rebuttal}, indent=1)
@@ -335,13 +354,18 @@ class Meeting:
                       {**ctx, "valuation": out["valuation"]})
         check = self._record(mid, "committee", "checker", "Fact check", r, r.output.summary)
         record = f"{facts}\n\n## Memos\n{memos}\n\n## Fact check\n{json.dumps(check, indent=1)}"
-        r = self._ask(mid, "risk", "risk", record + "\n\nWrite the portfolio-impact memo.",
-                      agents.RiskMemo, ctx)
+        # The risk officer is arithmetic on numbers code already has: no AI.
+        size = f.get("weight") or f.get("target") or self.m.limits.min_position
+        r = agents.Result(output=coded.risk_memo(f, self.desk, self.m, size), model="code")
         risk_memo = self._record(mid, "committee", "risk", "Portfolio impact", r, r.output.memo)
-        record += f"\n\n## Risk officer\n{json.dumps(risk_memo, indent=1)}"
+        record += f"\n\n## Risk officer (computed by code)\n{json.dumps(risk_memo, indent=1)}"
 
-        # --- the vote ------------------------------------------------------
-        votes = self.vote(mid, record, task, {**ctx, "valuation": out["valuation"]})
+        # --- the vote: each member's position after the debate, read by code ---
+        votes = coded.votes(out, rebuttal_out, risk_memo)
+        for v in votes:
+            self.store.add_step(mid, "vote", v["role"], "Vote", v["reason"],
+                                {"output": {"vote": v["vote"], "reason": v["reason"]}, "model": "code",
+                                 "cost_usd": 0, "sources": []})
         vote_md = "\n".join(f"- {ROLES[v['role']].title}: **{v['vote']}**. {v['reason']}" for v in votes)
 
         # --- the verdict ---------------------------------------------------
@@ -364,51 +388,67 @@ class Meeting:
         return mid
 
     def two_verdicts(self, mid: int, prompt: str, ctx: dict):
-        """Two independent CIO verdicts. If one acts (buy, add, trim, sell) and
-        the other does not, the council takes the one that does not: a decision
-        that flips on a second reading is not confident enough to trade on."""
-        if self.backend.name == "scripted":           # rules give the same answer twice
-            return self._ask(mid, "cio", "cio", prompt, agents.CIODecision, ctx)
-        with ThreadPoolExecutor(max_workers=2) as ex:
-            a, b = list(ex.map(lambda _: self._ask(mid, "cio", "cio", prompt, agents.CIODecision, ctx), range(2)))
-        acts = lambda r: r.output.decision in ("buy", "add", "trim", "sell")
-        same = a.output.decision == b.output.decision
-        pick = a if same or acts(b) or not acts(a) else b
-        if not same:
-            other = b if pick is a else a
-            pick.output.rationale = (f"**Two independent verdicts disagreed** ({a.output.decision} and "
-                                     f"{b.output.decision}). The council takes the cautious one: "
-                                     f"{pick.output.decision}.\n\n" + pick.output.rationale)
-            pick.research = (pick.research + f"\n\nSecond verdict: {other.output.decision} "
-                             f"(grade {other.output.grade}). {other.output.rationale}").strip()
+        """The CIO decides. Only if that verdict would trade (buy, add, trim,
+        sell) does a second, independent CIO decide too; if the second would
+        not trade, the council does not. A verdict that flips on a second
+        reading is not confident enough to trade on. No trade, no second call."""
+        a = self._ask(mid, "cio", "cio", prompt, agents.CIODecision, ctx)
+        if self.backend.name == "scripted" or not coded.acts(a.output.decision):
+            return a
+        b = self._ask(mid, "cio", "cio", prompt, agents.CIODecision, ctx)
+        if coded.acts(b.output.decision) and b.output.decision == a.output.decision:
+            a.cost_usd += b.cost_usd
+            return a
+        pick = b if not coded.acts(b.output.decision) else a
+        other = a if pick is b else b
+        pick.output.rationale = (f"**Two independent verdicts disagreed** ({a.output.decision} and "
+                                 f"{b.output.decision}). The council takes the cautious one: "
+                                 f"{pick.output.decision}.\n\n" + pick.output.rationale)
+        pick.research = (pick.research + f"\n\nSecond verdict: {other.output.decision} "
+                         f"(grade {other.output.grade}). {other.output.rationale}").strip()
         pick.cost_usd = a.cost_usd + b.cost_usd
         return pick
 
-    def vote(self, mid: int, record: str, task: str, ctx: dict) -> list[dict]:
-        """Every member votes after the debate, in parallel, on the full record."""
-        prompt = (record + f"\n\n{task} You have read the whole debate. Cast your vote: buy (buy or "
-                  "add now), wait (watch or hold) or no (avoid, trim or sell), with the one fact "
-                  "that decides it.")
+    def _reuse(self, step: dict, mt: dict, why: str) -> agents.Result:
+        d = step.get("data") or {}
+        out = d.get("output") or {}
+        schema = {"macro": agents.MacroMemo, "earnings": agents.EarningsMemo}[step["role"]]
+        r = agents.Result(output=schema.model_validate(out),
+                          sources=[agents.Source(**x) for x in d.get("sources") or []],
+                          research=d.get("research", ""), model=f"reused from meeting #{mt['id']}")
+        r.reused = why
+        return r
 
-        def one(key: str):
-            role = agents.voter(key)
-            res = self.backend.run(role, prompt, agents.Vote, {**ctx, "task": "vote", "voter": key})
-            return key, res
-        with ThreadPoolExecutor(max_workers=len(agents.VOTERS)) as ex:
-            results = list(ex.map(one, agents.VOTERS))
-        votes = []
-        for key, res in results:
-            self.cost += res.cost_usd
-            v = res.output
-            self.store.add_step(mid, "vote", key, "Vote", v.reason,
-                                {"output": agents.schema_json(v), "model": res.model,
-                                 "cost_usd": round(res.cost_usd, 4), "sources": []})
-            votes.append({"role": key, "vote": v.vote, "reason": v.reason})
-        self.store.set_cost(mid, self.cost)
-        if self.cost > self.m.limits.meeting_budget_usd:
-            raise OverBudget(f"the meeting has cost ${self.cost:.2f}, over the "
-                             f"${self.m.limits.meeting_budget_usd:.2f} budget")
-        return votes
+    def _recent_steps(self, role: str, days: float, ticker: Optional[str] = None):
+        from datetime import datetime, timedelta, timezone
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+        for mt in self.store.meetings(200):
+            if mt["started_at"] < since:
+                break
+            if mt["status"] != "done" or mt["backend"] != self.backend.name or (ticker and mt["ticker"] != ticker):
+                continue
+            st = next((x for x in self.store.steps(mt["id"]) if x["phase"] == "blind" and x["role"] == role
+                       and not ((x.get("data") or {}).get("model") or "").startswith("reused")), None)
+            if st:
+                yield mt, st
+
+    def reusable_macro(self) -> Optional[agents.Result]:
+        """The latest macro memo from the last 7 days: the economy is the same for every stock."""
+        for mt, st in self._recent_steps("macro", 7):
+            return self._reuse(st, mt, f"the macro view from {mt['started_at'][:10]}")
+        return None
+
+    def reusable_earnings(self, ticker: str) -> Optional[agents.Result]:
+        """The last earnings memo on this stock, if the company has not reported since."""
+        from datetime import date
+        today = date.today().isoformat()
+        reported = max((d for d in self.steward.earnings_dates(ticker) if d <= today), default=None)
+        for mt, st in self._recent_steps("earnings", 120, ticker):
+            if reported and mt["started_at"][:10] > reported:
+                return self._reuse(st, mt, f"no new results since {reported}")
+            if not reported and mt["started_at"][:10] >= (date.today().replace(day=1)).isoformat():
+                return self._reuse(st, mt, "no results date known; reused within the month")
+        return None
 
     def execute(self, mid: int, ticker: str, d: dict) -> dict:
         book = self.pf.book()

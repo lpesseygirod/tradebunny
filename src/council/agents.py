@@ -333,13 +333,7 @@ ROLES: dict[str, Role] = {r.key: r for r in [
 ]}
 
 
-VOTERS = ["macro", "thesis", "valuation", "earnings", "redteam", "risk"]
-
-
-def voter(key: str) -> Role:
-    """A member casting a vote: the same seat and instructions, on the cheaper
-    model and without research. The vote reads the whole record."""
-    return replace(ROLES[key], model=SONNET, web=False)
+VOTERS = ["macro", "thesis", "valuation", "earnings", "redteam", "risk"]   # read by code: see coded.votes
 
 
 # ------------------------------------------------------------------ backends
@@ -544,27 +538,6 @@ class ScriptedBackend:
                         "With an AI key this member reads the release, guidance and call."],
             memo="Scripted earnings memo: no results were read. A real meeting checks the latest "
                  "quarter against the thesis.", predictions=[])
-
-    def _vote(self, c: dict) -> Vote:
-        g = ((c.get("prior") or {}).get("grade") or "").upper()
-        g = g if g in ("A", "B", "C", "D") else ""
-        priced = (c.get("valuation") or {}).get("priced_in", "partly")
-        who = c["voter"]
-        if who == "valuation":
-            v = {"no": "buy", "partly": "wait", "yes": "no"}[priced]
-            why = f"Priced in: {priced}."
-        elif who == "thesis":
-            v = "buy" if g in ("A", "B") else "wait"
-            why = f"Grade {g or 'none'} on file."
-        elif who == "redteam":
-            v = "no" if priced == "yes" or g in ("C", "D", "") else "wait"
-            why = "The objections stand until results answer them."
-        elif who == "risk":
-            v = "wait" if c.get("ai") else "buy" if g in ("A", "B") else "wait"
-            why = "Adds to the AI-linked bet." if c.get("ai") else "Adds a source of return outside AI."
-        else:
-            v, why = "wait", "No new evidence in a scripted meeting."
-        return Vote(vote=v, reason=f"{why} (scripted)")
 
     def _premortem(self, c: dict) -> Premortem:
         breakers = (c.get("prior") or {}).get("breakers") or ["Its multiple falls back to its history"]

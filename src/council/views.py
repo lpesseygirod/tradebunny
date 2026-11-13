@@ -316,6 +316,7 @@ def debate(store: Store, m: Mandate, mid: int) -> dict:
                       "stance": stance, "stance_label": STANCE_LABEL.get(stance, stance),
                       "points": o.get("key_points") or [], "body": s["body"], "out": o,
                       "model": (s.get("data") or {}).get("model", ""),
+                      "reused": s["title"].split("(reused: ")[1].rstrip(")") if "(reused: " in s["title"] else "",
                       "sources": (s.get("data") or {}).get("sources") or [],
                       "prov": _provenance(s, facts, mt["backend"])})
     order = ["macro", "thesis", "valuation", "earnings", "redteam"]
@@ -519,6 +520,11 @@ def limits(book: Optional[risk.Book], m: Mandate, store: Store) -> list[dict]:
     scripted = all(x["backend"] == "scripted" for x in store.meetings(200))
     row("AI cost", "Per meeting, when Claude runs", f"≤ ${lim.meeting_budget_usd:g}",
         top / lim.meeting_budget_usd, f"Now ${top:.2f}" + (" (scripted)" if scripted else " at most"))
+    from . import budget
+    used = budget.spent(store)
+    row("AI budget", "All AI use this month: meetings, files, scout, alerts",
+        f"≤ ${lim.monthly_ai_budget_usd:g} / month",
+        used / lim.monthly_ai_budget_usd if lim.monthly_ai_budget_usd else 1.0, f"Now ${used:.2f}")
     return rows
 
 

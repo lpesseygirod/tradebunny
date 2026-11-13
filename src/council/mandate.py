@@ -57,6 +57,7 @@ class Limits(Strict):
     research_refresh_days: int = Field(default=90, ge=7)  # a file older than this is rewritten
     big_drop: float = Field(default=0.10, gt=0, lt=1)     # a one-day fall that triggers a check
     max_urgent_reviews_per_day: int = Field(default=1, ge=0)
+    monthly_ai_budget_usd: float = Field(default=30.0, ge=0)   # all AI stages together, per book
 
     @model_validator(mode="after")
     def _order(self) -> "Limits":

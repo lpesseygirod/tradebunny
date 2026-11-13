@@ -365,7 +365,7 @@ class TestViews:
     def test_every_limit_has_a_status(self, pf, st, m):
         from council import views
         rows = views.limits(pf.book(), m, st)
-        assert len(rows) == 7 and all(r["status"] in ("ok", "close", "over") for r in rows)
+        assert len(rows) == 8 and all(r["status"] in ("ok", "close", "over") for r in rows)
 
     def test_the_meetings_filter(self, client):
         client.post("/start")
@@ -905,9 +905,10 @@ class TestCommittee:
         assert {s["role"] for s in votes} == set(agents.VOTERS)
         assert mt["decision"]["dissent_answer"]
 
-    def test_votes_run_on_the_cheaper_model_without_research(self):
-        v = agents.voter("thesis")
-        assert v.model == agents.SONNET and not v.web and v.system == agents.ROLES["thesis"].system
+    def test_votes_and_the_risk_officer_cost_no_ai(self, st, steward, m, pf):
+        mt, steps = run(st, steward, m, pf, "HWM")
+        coded_steps = [s for s in steps if s["phase"] == "vote" or (s["role"] == "risk" and s["phase"] == "committee")]
+        assert coded_steps and all(s["data"]["model"] == "code" for s in coded_steps)
 
 
 def move(steward, ticker, change):
@@ -1242,3 +1243,122 @@ def test_the_cli_parses_every_command():
     from council import cli
     for argv in (["research", "TSM"], ["screen"], ["watch"], ["portfolio-meeting"], ["--book", "rules", "daily"]):
         assert cli.build_parser().parse_args(argv)
+
+
+# ------------------------------------------------- AI only where needed
+
+class Counting(agents.ScriptedBackend):
+    """Pretends to be a real AI (name 'fake') and counts every call by task."""
+    name = "fake"
+
+    def __init__(self):
+        self.calls = []
+
+    def run(self, role, prompt, schema, context):
+        self.calls.append((context.get("task"), context.get("research", True)))
+        res = super().run(role, prompt, schema, context)
+        res.cost_usd = 0.10
+        return res
+
+
+class NoAI(agents.ScriptedBackend):
+    name = "fake"
+
+    def run(self, *a, **k):
+        raise AssertionError("the AI was called")
+
+
+class TestAIOnlyWhereNeeded:
+    def test_a_meeting_calls_the_ai_only_for_judgement(self, st, steward, m, pf):
+        b = Counting()
+        run(st, steward, m, pf, "HWM", b)
+        tasks = [t for t, _ in b.calls]
+        assert "vote" not in tasks and "risk" not in tasks                # code
+        assert sorted(tasks) == sorted(["macro", "thesis", "valuation", "earnings", "premortem",
+                                        "objections", "rebuttal", "factcheck", "cio"])
+        assert all(not r for t, r in b.calls if t in ("objections", "rebuttal"))   # no second web search
+
+    def test_the_macro_memo_is_reused_for_a_week(self, st, steward, m, pf):
+        b = Counting()
+        run(st, steward, m, pf, "HWM", b)
+        b.calls.clear()
+        mt, steps = run(st, steward, m, pf, "WM", b)
+        assert "macro" not in [t for t, _ in b.calls]
+        macro = next(s for s in steps if s["role"] == "macro")
+        assert "reused" in macro["title"] and macro["data"]["cost_usd"] == 0
+
+    def test_the_earnings_memo_waits_for_new_results(self, st, steward, m, pf, monkeypatch):
+        from datetime import date, timedelta
+        b = Counting()
+        old = (date.today() - timedelta(days=40)).isoformat()
+        monkeypatch.setattr(steward, "earnings_dates", lambda t: [old])
+        run(st, steward, m, pf, "HWM", b)
+        b.calls.clear()
+        run(st, steward, m, pf, "HWM", b)                                  # same stock, no new results
+        assert "earnings" not in [t for t, _ in b.calls]
+        monkeypatch.setattr(steward, "earnings_dates", lambda t: [date.today().isoformat()])
+        b.calls.clear()
+        run(st, steward, m, pf, "HWM", b)                                  # new results: read them
+        assert "earnings" in [t for t, _ in b.calls]
+
+    def test_no_second_verdict_when_nothing_would_trade(self, st, steward, m, pf):
+        b = Counting()
+        mt, _ = run(st, steward, m, pf, "HWM", b)                          # scripted rule: watch
+        assert mt["decision"]["decision"] == "watch"
+        assert [t for t, _ in b.calls].count("cio") == 1
+
+    def test_names_only_close_to_a_trigger_are_not_convened(self, st, steward, m, pf):
+        w = {"ticker": "HWM", "name": "Howmet", "grade": "B", "line": "x", "status": "close"}
+        import council.views as v
+        orig = v.watch_rows
+        v.watch_rows = lambda pf_, q: [w]
+        try:
+            plan = scan.agenda(st, pf, m, steward.quotes(pf.tickers_needed()))
+        finally:
+            v.watch_rows = orig
+        assert not any(c["ticker"] == "HWM" for c in plan["picked"])
+        assert any(s["ticker"] == "HWM" and "when the trigger is hit" in s["why"] for s in plan["skipped"])
+
+    def test_a_market_wide_fall_is_noise_without_ai(self, st, steward, ms, pfs):
+        move(steward, "ASML.AS", -0.15)                                   # beta about 1.3
+        move(steward, ms.benchmark, -0.15)
+        events = watch.run(st, steward, ms, pfs, NoAI())
+        a = st.alerts()[0]
+        assert a["status"] == "noise" and a["backend"] == "code" and "market-wide" in events[0]
+
+    def test_a_company_specific_fall_still_gets_the_sentinel(self, st, steward, ms, pfs):
+        move(steward, "CME", -0.15)
+        watch.run(st, steward, ms, pfs, Convene())
+        assert st.alerts()[0]["status"] == "convene"
+
+    def test_the_portfolio_meeting_needs_no_ai_without_a_possible_swap(self, st, steward, ms, pfs):
+        mid = review.PortfolioMeeting(st, steward, ms, pfs, NoAI()).run()
+        mt = st.meeting(mid)
+        assert mt["status"] == "done" and mt["cost_usd"] == 0
+        assert all(s["data"].get("model") == "code" for s in st.steps(mid) if s["phase"] == "committee")
+
+
+class TestMonthlyBudget:
+    def over(self, m):
+        return m.model_copy(update={"limits": m.limits.model_copy(update={"monthly_ai_budget_usd": 0.05})})
+
+    def test_spending_is_added_up(self, st, steward, m, pf):
+        from council import budget
+        run(st, steward, m, pf, "HWM", Counting())
+        assert budget.spent(st) == pytest.approx(0.9)                      # 9 calls x $0.10
+
+    def test_over_budget_the_meeting_stops_at_the_gate(self, st, steward, m, pf):
+        run(st, steward, m, pf, "HWM", Counting())
+        mt, steps = run(st, steward, self.over(m), pf, "WM", NoAI())
+        assert mt["status"] == "stopped" and "AI budget" in str(steps[0]["data"]["checks"])
+
+    def test_over_budget_every_ai_stage_waits(self, st, steward, ms, pfs):
+        from council import budget
+        run(st, steward, ms, pfs, "HWM", Counting())
+        mo = self.over(ms)
+        assert not budget.allows(st, mo, NoAI()) and budget.allows(st, mo, agents.ScriptedBackend())
+        assert "budget" in screening.run_screen(st, steward, mo, NoAI())["error"]
+        d = st.dossier(screening.write_dossier(st, steward, mo, "TSM", NoAI()))
+        assert d["status"] == "failed" and "budget" in d["data"]["error"]
+        move(steward, "CME", -0.15)
+        assert "budget" in watch.run(st, steward, mo, pfs, NoAI())[0]

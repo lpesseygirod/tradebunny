@@ -21,6 +21,28 @@
   </ol>
 </section>
 
+<section class="card mt">
+  <h2>Where the AI is used, and where it isn't</h2>
+  <p class="muted small">The AI is used only where reading and judgement are needed. Everything that is arithmetic or a rule is plain code: free, and the same answer every time. A monthly cap of <b>${{ '%g'|format(lim.monthly_ai_budget_usd) }}</b> per book stops all AI use once it is spent; the rules keep working.</p>
+  <div class="table-wrap"><table>
+    <tr><th>Step</th><th>Done by</th><th>Why</th></tr>
+    <tr><td>Agenda, gate, fact sheet, quant desk</td><td><span class="pill outline mono tiny">code</span></td><td class="small">Rules and numbers</td></tr>
+    <tr><td>Thesis, valuation, red team memos</td><td><span class="pill accent tiny">AI</span></td><td class="small">Reading filings and news, judging a business</td></tr>
+    <tr><td>Macro memo</td><td><span class="pill accent tiny">AI, once a week</span></td><td class="small">The economy is the same for every stock: reused for 7 days</td></tr>
+    <tr><td>Earnings memo</td><td><span class="pill accent tiny">AI, once per results</span></td><td class="small">Reused until the company reports again</td></tr>
+    <tr><td>Cross-examination</td><td><span class="pill accent tiny">AI, no new search</span></td><td class="small">Argues from the research already done</td></tr>
+    <tr><td>Fact check, CIO verdict</td><td><span class="pill accent tiny">AI</span></td><td class="small">Judgement. A second verdict only when the first would trade</td></tr>
+    <tr><td>Risk officer, the vote</td><td><span class="pill outline mono tiny">code</span></td><td class="small">Betas, correlations, flags; positions read from the memos</td></tr>
+    <tr><td>Risk engine, sizing, orders, approval checks</td><td><span class="pill outline mono tiny">code</span></td><td class="small">The only veto</td></tr>
+    <tr><td>Names only close to a trigger</td><td><span class="pill outline mono tiny">code</span></td><td class="small">Not convened: a meeting could only say "wait"</td></tr>
+    <tr><td>Scout, research files</td><td><span class="pill accent tiny">AI, capped</span></td><td class="small">Weekly; at most {{ lim.max_research_files_per_week }} files a week</td></tr>
+    <tr><td>Watch: market-wide falls</td><td><span class="pill outline mono tiny">code</span></td><td class="small">A fall the index explains is noise</td></tr>
+    <tr><td>Watch: results, company-specific falls</td><td><span class="pill accent tiny">AI</span></td><td class="small">Reading what happened</td></tr>
+    <tr><td>Portfolio meeting</td><td><span class="pill outline mono tiny">code</span> + <span class="pill accent tiny">AI only for a swap</span></td><td class="small">Risk and weakest holdings are computed; the CIO is asked only when a swap is possible</td></tr>
+    <tr><td>Scorekeeping, forecasts, Rules-only book</td><td><span class="pill outline mono tiny">code</span></td><td class="small">Measured against the index</td></tr>
+  </table></div>
+</section>
+
 <div class="grid g2 mt">
   <section class="card">
     <h2>1 · What gets discussed</h2>
@@ -28,7 +50,7 @@
     <ol class="small">
       <li><b>Urgent reviews</b> the sentinel asked for after results or a big fall. <span class="pill outline mono tiny">code</span></li>
       <li><b>Watch-list names whose buy trigger is hit</b>: forward P/E or price at or below the committee's entry level, and holdings at their add level. <span class="pill outline mono tiny">code</span></li>
-      <li><b>Names close to their trigger</b> (within 10% on P/E, 5% on price), and the scout's shortlisted ideas. <span class="pill outline mono tiny">code</span></li>
+      <li><b>The scout's shortlisted ideas.</b> Names only close to their trigger are listed, not convened. <span class="pill outline mono tiny">code</span></li>
       <li><b>Holdings the portfolio meeting sent back</b> for review. <span class="pill outline mono tiny">code</span></li>
       <li><b>Holdings not reviewed for {{ lim.review_holdings_every_days }} days</b>: each stock is re-examined about quarterly. <span class="pill outline mono tiny">code</span></li>
     </ol>
@@ -58,10 +80,10 @@
       <div class="small muted"><b>Macro strategist</b>: the economy and the AI spending cycle; never names a stock. · <b>Thesis analyst</b>: the five-point test with this round's evidence only. · <b>Valuation analyst</b>: is it priced in, against its own history and peers. · <b>Earnings analyst</b>: the latest results, guidance and call, against the thesis. · <b>Red team</b>: a pre-mortem, "two years on we lost 40%: why?", on a different AI model so its blind spots differ.</div></div></li>
     <li><div><b>Round 2 · cross-examination</b><div class="small muted">The red team reads the thesis and ranks three objections, each with evidence and a test that would prove it right. Generic objections are not allowed. The thesis analyst gets one rebuttal and must concede where the evidence is against it.</div></div></li>
     <li><div><b>Fact-checker</b><div class="small muted">Checks the claims the decision rests on against the fact sheet and the sources: confirmed, unsupported or contradicted. Unsupported claims count for nothing.</div></div></li>
-    <li><div><b>Risk officer</b><div class="small muted">Which holdings are the same bet, and what each scenario (AI spending cut, rates up, recession, a Taiwan crisis…) does to the stock. Code turns that into the cost to the whole portfolio. May only ask for stricter action.</div></div></li>
-    <li><div><b>The vote</b><div class="small muted">Every member reads the whole record and votes buy, wait or no, with the one fact that decides it.</div></div></li>
+    <li><div><b>Risk officer</b> <span class="pill outline mono tiny">code</span><div class="small muted">Which holdings are the same bet (correlation of weekly returns, the AI and Taiwan flags), and what each world (markets fall, AI spending cut, rates up, recession, a Taiwan crisis) does to the stock, scaled by its beta, then to the whole portfolio. May only ask for stricter action.</div></div></li>
+    <li><div><b>The vote</b> <span class="pill outline mono tiny">code</span><div class="small muted">Each member's position after the debate (buy, wait or no), read from what they wrote: their stance, what was conceded, what the price says.</div></div></li>
     <li><div><b>Forecasts</b><div class="small muted">Each researching member also makes two or three forecasts code can check later (the stock against the index, next quarter's growth and margin). Scored when the answer is known; once a member has five, the CIO sees how calibrated they are.</div></div></li>
-    <li><div><b>CIO verdict</b><div class="small muted">A grade, a decision, a buy trigger and a "sell if" tied to the thesis, with an answer to every objection and to every member who voted otherwise. The CIO decides twice, independently: if one verdict trades and the other doesn't, the council doesn't. "No action" is the default: the burden of proof is on buying.</div></div></li>
+    <li><div><b>CIO verdict</b><div class="small muted">A grade, a decision, a buy trigger and a "sell if" tied to the thesis, with an answer to every objection and to every member who voted otherwise. When the verdict would trade, a second CIO decides independently: if it wouldn't trade, the council doesn't. "No action" is the default: the burden of proof is on buying.</div></div></li>
     <li><div><b>Code checks the verdict</b> <span class="pill outline mono tiny">code</span><div class="small muted">Only A, or B with its trigger reached, may be bought. A grade-B name with a price or P/E trigger waits until the trigger is actually reached. A full position needs grade A. A sale needs a named thesis breaker. Then the size: position, Taiwan, AI and stock-count caps, paid from the watch-list reserve first.</div></div></li>
     <li><div><b>Your OK</b> <span class="pill outline mono tiny">code</span><div class="small muted">Everything allowed becomes a proposal on the Money page. Nothing trades until you approve. Approving re-checks every rule at today's price; an unanswered proposal expires after {{ lim.proposal_days }} days.</div></div></li>
     <li><div><b>The order</b> <span class="pill outline mono tiny">code</span><div class="small muted">Limit orders at the last price, in {{ lim.tranches }} tranches {{ lim.tranche_spacing_days }} days apart: the first now, the rest at the daily review. {{ 'Paper money at real prices.' if mandate.broker.kind == 'paper' else 'Sent to Interactive Brokers.' }}</div></div></li>

@@ -6,8 +6,8 @@ The scan picks meetings in this order, until the month's slots run out:
      the thesis): an urgent review
   1. watch-list names whose buy trigger is HIT (forward P/E or price at or
      below the committee's entry level), and holdings at their ADD level
-  2. watch-list names that are CLOSE to their trigger (within 10% on P/E,
-     5% on price), and the scout's shortlisted ideas
+  2. the scout's shortlisted ideas (names only CLOSE to a trigger are listed,
+     not convened: they could only be told to wait)
   3. holdings the monthly portfolio meeting asked the committee to review
   4. holdings not reviewed for `review_holdings_every_days` (about quarterly)
 
@@ -101,7 +101,13 @@ def agenda(store: Store, pf: Portfolio, m: Mandate, quotes: dict) -> dict:
                                "reason": "Add level reached: " + w["line"], "rank": 1})
                 hold_left -= 1
             continue
-        reason = ("Buy trigger hit: " if w["status"] == "hit" else "Close to its trigger: ") + w["line"]
+        reason = "Buy trigger hit: " + w["line"]
+        if w["status"] == "close":
+            # A grade-B name can't be bought before its trigger, so a meeting now could
+            # only say "watch": no AI is spent until the trigger is actually hit.
+            skipped.append({"ticker": w["ticker"], "name": w["name"],
+                            "why": "Close to its trigger, not there yet: it meets when the trigger is hit"})
+            continue
         if last and _days_since(last["started_at"]) < RECENT_DAYS:
             skipped.append({"ticker": w["ticker"], "name": w["name"],
                             "why": f"Discussed {views.day_label(last['started_at'])}; waits {RECENT_DAYS} days"})
@@ -218,7 +224,8 @@ def daily(store: Store, steward: Steward, m: Mandate, pf: Portfolio,
             events.append(f"Meeting #{mid} on {c['name']} ({c['reason']}): {d}")
         if not ids:
             events.append("Scan: nothing for the council to discuss today")
-    if backend is not None and stages_on:
+    from . import budget
+    if backend is not None and stages_on and budget.allows(store, m, backend):
         left = m.limits.max_postmortems_per_month - learning.postmortems_this_month(store)
         for case in learning.due_postmortems(store, m)[:max(0, left)]:
             pid = learning.run_postmortem(store, steward, m, case, backend)
@@ -226,6 +233,8 @@ def daily(store: Store, steward: Steward, m: Mandate, pf: Portfolio,
             events.append(f"Post-mortem #{pid} on {case['name']}: {case['reason']}"
                           + (f" ({len(store.lessons('proposed'))} lessons waiting for your OK)"
                              if pm["status"] == "done" else " (failed)"))
+    if backend is not None and backend.name != "scripted":
+        events.append(f"AI spend this month: ${budget.spent(store):.2f} of ${m.limits.monthly_ai_budget_usd:g}")
     pending = store.proposals("pending")
     if pending:
         events.append(f"{len(pending)} proposal{'s' if len(pending) != 1 else ''} waiting for your OK")

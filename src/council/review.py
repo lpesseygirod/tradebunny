@@ -38,7 +38,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from . import agents, approvals, quant, risk
+from . import agents, approvals, budget, quant, risk
 from .agents import ROLES, ScenarioMove
 from .data import Steward
 from .mandate import Mandate
@@ -213,29 +213,48 @@ GRADE_RANK = {"A": 0, "B": 1, None: 2, "": 2, "not_graded": 2, "C": 3, "D": 4}
 
 
 def _scripted_book(f: dict) -> BookMemo:
-    ai = f["ai_weight"]
-    stocks = sum(r["weight"] for r in f["stocks"])
-    top = sorted(f["stocks"], key=lambda r: -r["weight"])[:3]
+    """The whole book's risk, computed: each stock's move scaled by its beta."""
+    stocks = f["stocks"]
+    beta = lambda r: max(0.3, min(r.get("beta") if r.get("beta") is not None else 1.0, 2.5))
+    o = f["other"]
+
+    def world(stock_move, ai_move=None, index=0.0, bonds=0.0, gold=0.0):
+        pts = sum(r["weight"] * ((ai_move if (ai_move is not None and r["ai"]) else stock_move) * beta(r))
+                  for r in stocks)
+        return round(pts + o["index"] * index + o["bonds"] * bonds + o["gold"] * gold)
+    top = sorted(stocks, key=lambda r: -r["weight"])[:3]
+    ai = [r["name"] for r in stocks if r["ai"]]
+    riskiest = max(stocks, key=lambda r: r["weight"] * beta(r) * (r.get("vol_1y") or 0.3), default=None)
     return BookMemo(
-        concentration="Largest: " + ", ".join(f"{r['name']} {r['weight'] * 100:.1f}%" for r in top) + " (scripted).",
-        same_bets=["AI capex: " + ", ".join(r["name"] for r in f["stocks"] if r["ai"])] if ai else [],
-        scenarios=[ScenarioMove(scenario="Base case", stock_move_pct=round(stocks * 6 + f["other"]["index"] * 6)),
-                   ScenarioMove(scenario="AI spending cut", stock_move_pct=round(-(ai * 25 + (stocks - ai) * 5))),
-                   ScenarioMove(scenario="Recession", stock_move_pct=round(-(stocks * 20 + f["other"]["index"] * 18))),
-                   ScenarioMove(scenario="Rates up", stock_move_pct=round(-(stocks * 8 + f["other"]["bonds"] * 2)))],
-        weakest_link=(top[0]["name"] if top else "-") + ": the largest position (scripted rule).",
-        memo="Scripted rule-of-thumb moves computed from the weights, not research.")
+        concentration="Largest: " + ", ".join(f"{r['name']} {r['weight'] * 100:.1f}%" for r in top) + ".",
+        same_bets=[f"AI capex: {', '.join(ai)}"] if len(ai) > 1 else [],
+        scenarios=[ScenarioMove(scenario="Base case", stock_move_pct=world(6, index=6, bonds=3, gold=2)),
+                   ScenarioMove(scenario="Markets fall 20%", stock_move_pct=world(-20, index=-20, bonds=2, gold=5)),
+                   ScenarioMove(scenario="AI spending cut", stock_move_pct=world(-5, ai_move=-30, index=-8)),
+                   ScenarioMove(scenario="Recession", stock_move_pct=world(-25, index=-22, bonds=4, gold=6)),
+                   ScenarioMove(scenario="Rates up", stock_move_pct=world(-10, index=-10, bonds=-3, gold=-2))],
+        weakest_link=(f"{riskiest['name']}: the most risk for its weight (size x beta x volatility)."
+                      if riskiest else "-"),
+        memo="Computed by code, not an AI: each stock's move is scaled by its beta, AI-linked stocks fall 30% "
+             "in an AI spending cut, and the index, bonds and gold move by fixed amounts.")
 
 
 def _scripted_challenge(f: dict) -> Challenge:
-    weak = sorted(f["stocks"], key=lambda r: (-GRADE_RANK.get(r["grade"], 2), r["gain_pct"]))[:2]
+    """The weakest holdings, computed: lowest grade first, then the most expensive
+    against their own history, then the weakest momentum."""
+    rank = lambda r: (-GRADE_RANK.get(r["grade"], 2), -(r.get("pe_vs_avg") or 0), r["gain_pct"])
+    weak = sorted(f["stocks"], key=rank)[:3]
     return Challenge(weakest=[_weak(r) for r in weak],
                      best_outside=(f["bench"][0]["name"] if f["bench"] else "none"),
-                     memo="Scripted: the weakest are the lowest grades on file, then the worst performers.")
+                     memo="Computed by code: the lowest grades on file, then the stocks priced furthest "
+                          "above their own average P/E.")
 
 
 def _weak(r: dict) -> Weak:
-    return Weak(ticker=r["ticker"], why=f"Grade {r['grade'] or 'none'} on file, {r['gain_pct'] * 100:+.1f}% since bought.")
+    pe = r.get("pe_vs_avg")
+    return Weak(ticker=r["ticker"], why=f"Grade {r['grade'] or 'none'} on file"
+                + (f"; P/E {pe * 100:+.0f}% vs its own average" if pe is not None else "")
+                + f"; {r['gain_pct'] * 100:+.1f}% since bought.")
 
 
 def _scripted_decision(f: dict) -> PortfolioDecision:
@@ -266,9 +285,9 @@ class PortfolioMeeting:
         self.store, self.steward, self.m, self.pf, self.backend = store, steward, m, pf, backend
         self.cost = 0.0
 
-    def _ask(self, mid: int, role: agents.Role, prompt: str, schema, scripted):
-        if self.backend.name == "scripted":
-            return agents.Result(output=scripted, model="scripted")
+    def _ask(self, mid: int, role: agents.Role, prompt: str, schema, scripted, use_ai: bool = True):
+        if self.backend.name == "scripted" or not use_ai:
+            return agents.Result(output=scripted, model="scripted" if self.backend.name == "scripted" else "code")
         res = self.backend.run(role, prompt, schema, {"task": "portfolio"})
         self.cost += res.cost_usd
         self.store.set_cost(mid, self.cost)
@@ -300,20 +319,20 @@ class PortfolioMeeting:
         self.store.add_step(mid, "facts", "code", "The whole book", text, f)
         task = "This is the monthly portfolio meeting: the whole book, not one stock."
 
-        r = self._ask(mid, ROLES["risk"], f"{text}\n\n{task} Write the book-level risk memo.", BookMemo,
-                      _scripted_book(f))
+        # The book's risk and its weakest holdings are arithmetic on the facts: code.
+        r = self._ask(mid, ROLES["risk"], "", BookMemo, _scripted_book(f), use_ai=False)
         book = self._record(mid, "committee", "risk", "The whole book", r, r.output.memo)
 
         red = replace(ROLES["redteam"], web=False)
-        r = self._ask(mid, red, f"{text}\n\n## Risk officer\n{json.dumps(book, indent=1)}\n\n{task} "
-                      "Name the weakest holdings, with evidence.", Challenge, _scripted_challenge(f))
+        r = self._ask(mid, red, "", Challenge, _scripted_challenge(f), use_ai=False)
         challenge = self._record(mid, "committee", "redteam", "The weakest holdings", r, r.output.memo)
 
         r = self._ask(mid, ROLES["cio"],
                       f"{text}\n\n## Risk officer\n{json.dumps(book, indent=1)}\n\n## Red team\n"
                       f"{json.dumps(challenge, indent=1)}\n\n{task} Rank every single stock held keep, review "
                       "or replace. Propose at most one swap, only within the swap rules, and pick up to three "
-                      "holdings for the committee to review next.", PortfolioDecision, _scripted_decision(f))
+                      "holdings for the committee to review next.", PortfolioDecision, _scripted_decision(f),
+                      use_ai=swap_possible(f) and budget.allows(self.store, self.m, self.backend))
         d = self._record(mid, "committee", "cio", "Decision", r, r.output.memo)
 
         outcome = self.rules(mid, f, d)
@@ -414,6 +433,14 @@ def propose_swap(store: Store, m: Mandate, mid: int, sell: str, buy: str, b_row:
                          "target_weight": s.target_weight, "funding": s.funding,
                          "checks": [asdict(c) for c in s.checks]}},
         expires_at=approvals._expiry(m))
+
+
+def swap_possible(f: dict) -> bool:
+    """Only then is the AI CIO's judgement needed: a bench name still valid
+    and a holding the committee has marked down. Otherwise code ranks the book
+    and picks the holdings to review, and no AI is spent."""
+    return (any(b["still_valid"] for b in f.get("bench") or [])
+            and any(r["grade"] in ("C", "D") or r["breaker_fired"] for r in f.get("stocks") or []))
 
 
 def due(store: Store) -> bool:

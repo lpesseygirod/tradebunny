@@ -73,18 +73,28 @@ def find_events(store: Store, steward: Steward, m: Mandate, pf: Portfolio,
     if not held:
         return []
     try:
-        quotes = steward.quotes(held)
+        quotes = steward.quotes(held + [m.benchmark])
     except DataError:
         return []
+    from . import quant
+    desk = quant.Desk(steward, store)
+    market = quotes[m.benchmark].change_1d or 0.0
     new = []
     for t in held:
         q = quotes[t]
         ch = q.change_1d
         if ch is not None and ch <= -m.limits.big_drop:
+            try:
+                b = desk.stock(t, m.benchmark).get("beta")
+            except Exception:
+                b = None
+            b = 1.0 if b is None else max(0.3, min(b, 2.5))
+            own = ch - b * market                     # the part the market does not explain
             aid = store.add_alert(t, "drop", f"drop:{t}:{today}",
                                   f"Fell {abs(ch) * 100:.1f}% in one day",
                                   {"change_1d": ch, "price": q.price, "prev_close": q.prev_close,
-                                   "currency": q.currency, "as_of": q.as_of})
+                                   "currency": q.currency, "as_of": q.as_of, "market_1d": market,
+                                   "beta": b, "own_move": own})
             if aid:
                 new.append(aid)
         lo = (date.fromisoformat(today) - timedelta(days=EARNINGS_WINDOW_DAYS)).isoformat()
@@ -149,8 +159,22 @@ def run(store: Store, steward: Steward, m: Mandate, pf: Portfolio,
     for aid in find_events(store, steward, m, pf):
         a = store.alert(aid)
         name = m.name_of(a["ticker"])
+        d = a["data"]
+        if a["kind"] == "drop" and d.get("own_move") is not None and d["own_move"] > -m.limits.big_drop / 2:
+            # Most of the fall is the whole market's: code calls it noise, no AI needed.
+            what = (f"The index fell {abs(d['market_1d']) * 100:.1f}% the same day; with a beta of {d['beta']:.2f} "
+                    f"that explains all but {abs(d['own_move']) * 100:.1f} points of the fall.")
+            store.update_alert(aid, status="noise", backend="code",
+                               data={**d, "check": {"what_happened": what, "breaker_fired": "", "verdict": "noise",
+                                                    "memo": "Judged by code: a market-wide fall, not news about the company."}})
+            events.append(f"Alert: {name}, {a['reason'].lower()}: noise (a market-wide fall, judged by code)")
+            continue
+        from . import budget
         if backend is None:
             events.append(f"Alert: {name}, {a['reason'].lower()} (needs the AI key to judge)")
+            continue
+        if not budget.allows(store, m, backend):
+            events.append(f"Alert: {name}, {a['reason'].lower()} (the monthly AI budget is used: not judged)")
             continue
         a = judge(store, steward, m, aid, backend)
         line = f"Alert: {name}, {a['reason'].lower()}: {a['status']}"

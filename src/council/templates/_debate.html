@@ -34,7 +34,7 @@
   {% for x in memos %}{% set st = ROLE_STYLE[x.role] %}
   <article class="memo c-{{ st[2] }}">
     <div class="who">{{ avatar(x.role) }}<div><b>{{ st[0] }}</b><small>{{ x.sub }}</small></div></div>
-    <span class="pill {{ x.stance }}">{{ x.stance_label }}</span>
+    <span class="pill {{ x.stance }}">{{ x.stance_label }}</span>{% if x.reused %} <span class="pill outline" title="No new AI call">Reused · {{ x.reused }}</span>{% endif %}
     {% if x.points %}<ul>{% for p in x.points %}<li>{{ p }}</li>{% endfor %}</ul>
     {% else %}<div class="md small">{{ x.body|md|safe }}</div>{% endif %}
     <details><summary>Full memo{% if x.sources %} and {{ x.sources|length }} sources{% endif %}</summary>
@@ -98,7 +98,7 @@
 {# ---------- risk officer ---------- #}
 {% if scen %}
 <section class="card mt" style="margin-top:28px">
-  <div class="who" style="margin-bottom:12px">{{ avatar('risk') }}<div><h2 style="font-size:1.3rem">Risk officer · overlap and scenarios</h2>
+  <div class="who" style="margin-bottom:12px">{{ avatar('risk') }}<div><h2 style="font-size:1.3rem">Risk officer · overlap and scenarios <span class="pill outline mono tiny">code</span></h2>
     <small>Worst case costs the whole portfolio {{ (scen.worst / 100)|abs|pct }} at {{ scen.size|pct }}</small></div></div>
   <p>{{ scen.overlap }}{% if scen.ai_after is not none %} AI-linked exposure after all tranches: <b>{{ scen.ai_after|pct }} of the {{ mandate.limits.ai_cap.get(mandate.setting)|pct(0) }} limit</b>.{% endif %}</p>
   {% if scen.rows %}
@@ -111,14 +111,14 @@
       <td><div class="track impact"><i class="{{ 'green' if r.move > 0 else 'red' }}" style="width:{{ r.width }}%"></i></div></td></tr>
     {% endfor %}
   </table></div>
-  <p class="tiny muted">Stock moves are the risk officer's estimates; the portfolio column is computed by code from the position size.</p>
+  <p class="tiny muted">Computed by code: market scenarios scale with the stock's beta, AI and Taiwan shocks are fixed falls, and the portfolio column multiplies by the position size.</p>
   {% endif %}
 </section>
 {% elif running and pairs|length and not verdict %}<div class="thinking"><i></i>The committee is deliberating…</div>{% endif %}
 
 {# ---------- the vote ---------- #}
 {% if votes %}
-<div class="round"><h2>The vote</h2><span class="muted">After the debate, every member votes on the whole record. The CIO must answer anyone who disagrees.</span></div>
+<div class="round"><h2>The vote</h2><span class="muted">Each member's position after the debate, read by code from what they wrote: no extra AI. The CIO must answer anyone who disagrees.</span></div>
 <section class="card">
   <div class="tally">
     {% for k in ('buy', 'wait', 'no') %}<span class="pill {{ VOTE_CLS[k] }}">{{ VOTE_LABEL[k] }} · {{ tally[k] }}</span>{% endfor %}

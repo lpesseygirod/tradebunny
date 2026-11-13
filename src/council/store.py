@@ -221,6 +221,10 @@ class Store:
                  json.dumps(data) if data is not None else None, now()))
             return int(cur.lastrowid)
 
+    def update_step_data(self, meeting_id: int, phase: str, data: Any) -> None:
+        with self._conn() as c:
+            c.execute("UPDATE steps SET data=? WHERE meeting_id=? AND phase=?", (json.dumps(data), meeting_id, phase))
+
     def finish_meeting(self, meeting_id: int, status: str, *, cost_usd: float = 0.0,
                        decision: Any = None, outcome: Any = None,
                        error: str = "") -> None:
