@@ -1,10 +1,10 @@
-"""The monthly AI budget: code decides when the AI may be used at all.
+"""Monthly AI budget: code decides whether the AI may be used at all.
 
-Every AI call already has a cost on record: meetings, research files, the
-sentinel's checks, post-mortems and the scout. Their total this month is
-compared with `monthly_ai_budget_usd` before any stage calls the API. Over
-the budget, the AI stages wait for next month; the bookkeeping, the risk
-engine, the quant desk and every rule keep working, because they are code.
+Every AI call records its cost (meetings, research files, sentinel checks,
+post-mortems, the scout). Before any stage calls the API, this month's total
+is compared with `monthly_ai_budget_usd`. Over budget, the AI stages wait for
+next month; bookkeeping, the risk engine, the quant desk and the rules keep
+running because they are code.
 """
 
 from __future__ import annotations

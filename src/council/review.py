@@ -1,32 +1,31 @@
 """The monthly portfolio meeting: the whole book, not one stock.
 
-Every other meeting looks at one name. With the portfolio full (10 of 10
-stocks), a new idea only makes sense if it is better than something already
-owned, so once a month the council looks at everything together:
+With the portfolio full (10 of 10 stocks), a new idea only makes sense if
+it beats something already owned, so once a month the council looks at
+everything together:
 
-    facts       code: every holding with its weight, gain, latest grade and
-                research file; the bench (names a committee wanted to buy
-                but the 10-stock limit blocked); the shortlist
-    risk        the risk officer: concentration, holdings that are really one
-                bet, what each world does to the WHOLE portfolio
+    facts       code: holdings with weight, gain, latest grade and research
+                file; the bench (buy verdicts blocked only by the 10-stock
+                limit); the shortlist
+    risk        concentration, holdings that are really one bet, what each
+                scenario does to the WHOLE portfolio
     challenge   the red team names the weakest holdings
     decision    the CIO ranks every holding keep / review / replace, may
-                propose ONE swap, and picks holdings for the committee to
-                review next
+                propose ONE swap, and picks holdings to review next
     rules       code checks the swap
 
-The portfolio meeting never invents a trade. A swap only pairs two verdicts
-the committee already reached in full meetings:
+The meeting never invents a trade. A swap only pairs two verdicts the
+committee already reached:
 
-  - the name sold must have been graded C or D at its latest review, or have
-    a thesis breaker on record (a price drop alone never sells)
-  - the name bought must have a committee verdict to buy (grade A, or B on
-    its trigger) from the last 90 days, still valid at today's price
-  - after the sale, the risk engine must allow the buy
+  - the name sold was graded C or D at its latest review, or has a thesis
+    breaker on record (a price drop alone never sells)
+  - the name bought has a buy verdict (grade A, or B on its trigger) from
+    the last 90 days, still valid at today's price
+  - after the sale, the risk engine allows the buy
 
-If the CIO wants to replace a holding that has not been marked down yet, the
-holding goes on the review list instead, and the committee reviews it next.
-A swap is a proposal like any other: on your book it waits for your OK.
+A holding the CIO wants to replace but that isn't marked down yet goes on
+the review list instead. A swap is a normal proposal: on my book it waits
+for my approval.
 """
 
 from __future__ import annotations
@@ -436,9 +435,8 @@ def propose_swap(store: Store, m: Mandate, mid: int, sell: str, buy: str, b_row:
 
 
 def swap_possible(f: dict) -> bool:
-    """Only then is the AI CIO's judgement needed: a bench name still valid
-    and a holding the committee has marked down. Otherwise code ranks the book
-    and picks the holdings to review, and no AI is spent."""
+    """True when a swap is possible: a valid bench name and a marked-down holding.
+    Only then is the AI CIO needed; otherwise code ranks the book."""
     return (any(b["still_valid"] for b in f.get("bench") or [])
             and any(r["grade"] in ("C", "D") or r["breaker_fired"] for r in f.get("stocks") or []))
 

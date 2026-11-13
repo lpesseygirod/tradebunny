@@ -102,7 +102,7 @@ class TestAccessControl:
         assert client.get("/").status_code == 200
 
     def test_a_post_needs_more_than_the_cookie(self, client):
-        """A cookie alone would let any site you visit halt your bot."""
+        """A cookie alone would let any site I visit halt my bot."""
         client.get(f"/?token={TOKEN}")            # cookie now set
         assert client.post("/halt").status_code == 403
 
@@ -259,7 +259,7 @@ class TestDecide:
 
 
 class TestTheAmountIsValidated:
-    """The owner's amount is free text. It can break a sound plan."""
+    """My amount is free text. It can break a sound plan."""
 
     def test_dust_is_refused(self, client, plans_dir):
         p = make_plan(plans_dir)
@@ -424,7 +424,7 @@ class TestScanIsAsynchronous:
 
 
 class TestScanFailureIsVisible:
-    """'A scan that silently fails and leaves the button spinning is worse.'"""
+    """A scan that silently fails and leaves the button spinning is worse."""
 
     @pytest.fixture
     def broken(self, control, plans_dir, monkeypatch):
@@ -507,7 +507,7 @@ from grid.plan import Status as _S
 
 
 class TestExecutorStateIsShown:
-    """Step 5 of the executor writes a snapshot; this is what reads it."""
+    """The executor writes a snapshot at the end of each pass; this is what reads it."""
 
     @pytest.fixture
     def app_with_state(self, control, plans_dir, source, tmp_path, monkeypatch):
@@ -795,15 +795,15 @@ class TestConfidenceAndKellyOnThePage:
         assert "KELLY SAYS DO NOT TAKE THIS" not in self.body(client)
 
     def test_a_negative_kelly_candidate_is_still_shown(self, client, plans_dir):
-        """It must not be hidden — the owner decides."""
+        """It must not be hidden — I decide."""
         self._plan(plans_dir, kelly_full=-0.2)
         # The approve button is now "Paper" / "Live" — still offered, with the
-        # Kelly warning above it. The owner decides.
+        # Kelly warning above it. I decide.
         assert "Paper" in self.body(client)
 
 
 class TestCalibrationIsShown:
-    """'An uncalibrated confidence number is decoration.'"""
+    """An uncalibrated confidence number is decoration."""
 
     def test_the_banner_is_always_present(self, client, plans_dir):
         assert "Confidence calibration" in client.get(
@@ -852,7 +852,7 @@ def seed(db, plan_id="p1", mode=PAPER, symbol="AAA-USDT"):
 
 
 class TestTheWebCannotTrade:
-    """'a WINDOW onto state the executor owns' — assert it structurally."""
+    """The page is a window onto state the executor owns, checked structurally."""
 
     def test_the_module_imports_no_exchange_client(self):
         import ast, inspect

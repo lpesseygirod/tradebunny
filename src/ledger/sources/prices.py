@@ -1,7 +1,7 @@
 """Alpaca market data — used only to resolve predictions, never to generate them.
 
-A free paper account gives you keys with no KYC. Data lives on a different host
-from trading, which is the single most common setup mistake:
+A free paper account gives keys with no KYC. Data lives on a different host
+from trading, which is the most common setup mistake:
     data:    https://data.alpaca.markets
     trading: https://paper-api.alpaca.markets
 """

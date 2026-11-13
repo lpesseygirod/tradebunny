@@ -179,7 +179,7 @@ class TestMeeting:
         mt, steps = run(st, steward, m, pf, "SHA0.DE")
         assert mt["status"] == "stopped" and len(steps) == 1
 
-    def test_a_verdict_waits_for_your_ok(self, st, steward, m, pf):
+    def test_a_verdict_waits_for_my_ok(self, st, steward, m, pf):
         from council import approvals
         before = len(st.trades())
         mt, steps = run(st, steward, m, pf, "TSM")
@@ -463,7 +463,7 @@ class TestScan:
         from council import scan
         before = len(st.trades())
         scan.daily(st, steward, m, pf, agents.ScriptedBackend())
-        assert len(st.trades()) == before                 # tranches not due yet, rest waits for you
+        assert len(st.trades()) == before                 # tranches not due yet, rest waits for me
 
 
 # ------------------------------------------------------------------- broker
@@ -993,7 +993,7 @@ class TestPortfolioMeeting:
         o = st.meeting(mid)["outcome"]
         p = st.proposal(o["proposal"])
         assert p["action"] == "swap" and p["data"]["sell"] == "CME" and p["data"]["buy"] == "HWM"
-        assert p["status"] == "pending"                               # waits for you
+        assert p["status"] == "pending"                               # waits for me
         approvals.approve(st, pfs, ms, p["id"])
         q = pfs.quantities()
         assert q.get("CME", 0) <= 1e-9 and q["HWM"] > 0
@@ -1186,8 +1186,8 @@ class TestSecondVerdict:
         assert agents.ClaudeBackend.split(role, "other", {"shared": "FACTS"}) == (role.system, "other")
 
 
-class TestYourCalls:
-    def test_your_reason_is_kept_and_scored(self, st, steward, m, pf):
+class TestMyCalls:
+    def test_my_reason_is_kept_and_scored(self, st, steward, m, pf):
         from council import approvals
         mt, _ = run(st, steward, m, pf, "TSM")
         approvals.approve(st, pf, m, mt["outcome"]["proposal"], why="TSMC is the only 2nm foundry")

@@ -60,7 +60,7 @@ bound is what stops that being unbounded.
 | Q_max = 5 | 5.86 units | 6 |
 | Q_max = 5 + skew | 4.66 units | 0 |
 
-**One honest caveat:** the bound stops *initiating* past Q_max. A fill already
+**One caveat:** the bound stops *initiating* past Q_max. A fill already
 in flight cannot be partially refused, so inventory can end up to one lot above
 the bound — 5.86 against a bound of 5. Tested explicitly
 (`test_the_overshoot_is_at_most_one_lot`).
@@ -162,7 +162,7 @@ Against fixed size, bound + skew gives **-0.53pp return, -1.55pp max drawdown,
 
 That is the predicted trade: slightly lower mean return, substantially lower
 variance. It is off by default because it changes every fill size and the
-benefit is a variance reduction that should be verified on your pairs, not
+benefit is a variance reduction that should be verified on my pairs, not
 assumed — `backtest.run(size_skew=True)` A/Bs it.
 
 ---
@@ -236,9 +236,9 @@ and is what "mean-reverting" actually means:
 
 Hurst's verdict is still computed and stored in `Assessment.hurst_would_reject`
 and surfaced in the notes, so the two can be compared on real scans rather than
-argued about. **This is a relaxation of a safety gate**, made on the owner's
-explicit instruction with reasoning; it is recorded here because a loosened
-gate should never be silent.
+argued about. **This is a relaxation of a safety gate.** I made it on purpose, for the
+reasons above, and I record it here because a loosened gate should never be
+silent.
 
 ---
 
@@ -612,7 +612,7 @@ The verdict survives that limitation: the retirement is driven by the realised
 column, which is worse for C in **both** windows actually tested, and that is a
 statement about its trading rather than about market direction.
 
-### Also worth recording: neither arm clears zero honestly
+### Also worth recording: neither arm clearly beats zero
 
 Baseline is negative in both windows. C's confidence intervals both **cross
 zero** ([−1.46%, +2.41%] and [−1.12%, +4.30%]), and dropping its best two pairs

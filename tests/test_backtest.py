@@ -3,7 +3,7 @@
 The generators come from `test_metrics.py` deliberately: the rubric decides an
 asset is grid-worthy from those same series, so the backtester had better agree
 with it. If `oscillating()` passes the rubric but loses money on replay, one of
-the two is wrong and we want to know.
+the two is wrong.
 
 The character of each series is known by construction, so the expected sign of
 every result here is known in advance rather than read off the output.
@@ -65,7 +65,7 @@ class TestThePlanUnderTestIsSane:
     def test_it_passes_its_own_validation(self):
         assert make_plan().validate() == []
 
-    def test_the_ladder_is_what_we_think(self):
+    def test_the_ladder_is_as_expected(self):
         p = make_plan()
         assert p.grid_prices == [94.0 + i for i in range(13)]
         assert p.step == 1.0
@@ -78,7 +78,7 @@ class TestThePlanUnderTestIsSane:
         assert min(falling()) < make_plan().stop_below
 
 
-# ------------------------------------------------------- the four requirements
+# ------------------------------------------------------------- the basics
 
 class TestOscillatingSeries:
     """The case the whole strategy exists for."""
@@ -194,7 +194,7 @@ class TestFlatSeries:
         assert run(make_plan(), flat(price=200.0), bars_per_day=BARS_PER_DAY).n_cycles == 0
 
 
-# ------------------------------------------------------- the honesty guarantees
+# ------------------------------------------------- closes only, fair pairing
 
 class TestOnlyClosesAreUsed:
     """The signature is the guarantee: highs and lows cannot be passed in."""
@@ -529,7 +529,7 @@ def stationary(n=400, seed=3):
 
 
 def fit_loses_then_market_recovers():
-    """In-sample loss, out-of-sample gain — the case the literal spec mishandles.
+    """In-sample loss, out-of-sample gain — the case a literal reading of the rule mishandles.
 
     An oscillation that ends with a hard slide (the stop widened so it does not
     fire), then a normal oscillation back around the original centre. The fit
@@ -637,7 +637,7 @@ class TestTheVerdictRule:
 
 
 class TestNothingLeaksFromOutOfSample:
-    """Step 4 is a replay. If anything is re-tuned, this is where it shows."""
+    """Out of sample is a replay, not a re-fit. If anything is re-tuned, this is where it shows."""
 
     def test_the_plan_ignores_the_out_of_sample_half(self):
         head = oscillating(n=180)

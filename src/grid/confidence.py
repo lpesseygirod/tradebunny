@@ -1,4 +1,4 @@
-"""Graded confidence — and the honest admission that it is a guess.
+"""Graded confidence, and an admission that it is a guess.
 
 WHAT IS A GATE AND WHAT IS A SCORE
 ==================================
@@ -144,7 +144,7 @@ def score_hurst(ci_low: Optional[float], ci_high: Optional[float],
     An interval that clears the gate by a wide margin scores near 1; one whose
     top edge merely grazes it scores near 0; one that straddles it scores 0.
     Using the interval rather than the point estimate is the difference between
-    "this is mean-reverting" and "this might be, we cannot tell".
+    "this is mean-reverting" and "this might be, I cannot tell".
     """
     if ci_low is None or ci_high is None:
         return None

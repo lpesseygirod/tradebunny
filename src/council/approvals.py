@@ -1,13 +1,13 @@
-"""Proposals: the council suggests, you decide, then code trades.
+"""Proposals: the council suggests, I decide, then code trades.
 
 A verdict the risk engine allows becomes a proposal, not an order. It waits
-for you, and expires after `proposal_days` because prices move. When you
-approve, the risk engine runs AGAIN at the current price and book: an order
-that passed a week ago but breaks a limit today is refused, not placed.
+for my OK and expires after `proposal_days` because prices move. On approval
+the risk engine runs AGAIN at today's price and book, so an order that passed
+a week ago but breaks a limit today is refused.
 
-Approving a buy approves its whole plan: the first tranche goes now and the
-other two are bought on their dates by the daily review. Rejecting a
-proposal, or a later sale of the stock, cancels any tranches still planned.
+Approving a buy approves its whole plan: the first tranche now, the others on
+their dates via the daily review. Rejecting it, or selling the stock later,
+cancels any tranches still planned.
 """
 
 from __future__ import annotations
@@ -60,8 +60,8 @@ def propose(store: Store, m: Mandate, *, meeting_id: Optional[int], ticker: str,
 
 
 def autopilot(store: Store, pf: Portfolio, m: Mandate, pid: int) -> Optional[dict]:
-    """On the Autopilot book, the council answers its own proposal at once.
-    The same approve(): every rule is re-checked before anything is placed."""
+    """On the Autopilot book the council answers its own proposal right away,
+    through the same approve(), so every rule is still re-checked."""
     if not m.autopilot:
         return None
     try:
@@ -157,8 +157,8 @@ def approve(store: Store, pf: Portfolio, m: Mandate, pid: int, by: str = "you", 
 
 def _swap(store: Store, pf: Portfolio, m: Mandate, p: dict) -> list[dict]:
     """Sell one holding in full, then buy the bench name in tranches. Both
-    halves are checked BEFORE anything is sold, so a buy the rules would now
-    refuse never leaves a sale behind."""
+    sides are checked BEFORE anything is sold, so a refused buy never leaves
+    a lone sale behind."""
     from .review import size_swap
     sell, buy = p["data"]["sell"], p["data"]["buy"]
     book = pf.book()

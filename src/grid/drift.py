@@ -1,11 +1,11 @@
-"""Has the thesis decayed since you approved it?
+"""Has the thesis decayed since I approved it?
 
 THE GAP THIS CLOSES
 ===================
 
 Every gate in this system fires once, at proposal time, and then never again.
 The executor enforces `stop_below` and nothing else. So a grid approved on a
-beautifully mean-reverting asset can watch that asset turn into a trend and
+clearly mean-reverting asset can watch that asset turn into a trend and
 keep trading it — buying every level down, never breaching a stop that sits
 below the whole range — and bleed for weeks while looking, from the outside,
 exactly like a grid doing its job.
@@ -16,10 +16,10 @@ module is the check for the slow one.
 WHAT IT DOES NOT DO
 ===================
 
-It does not close anything. Stopping a grid is the owner's decision, the same
+It does not close anything. Stopping a grid is my decision, the same
 principle as `control.halt_all` cancelling orders without liquidating: the
-system is allowed to tell you the thesis has broken, and is not allowed to
-decide what that means for your money. A drift alert is an argument, not an
+system may tell me the thesis has broken, but may not decide what that
+means for my money. A drift alert is an argument, not an
 action.
 
 WHAT COUNTS AS DECAY
@@ -106,7 +106,7 @@ class DriftReport:
         return "\n".join(lines)
 
     def message(self) -> str:
-        """The notification body. Deliberately says what it is NOT doing."""
+        """The notification body. Says what it is NOT doing."""
         return (f"⚠️ {self.symbol}: the thesis this grid was approved on has "
                 f"decayed.\n\n{self.explain()}\n\n"
                 f"The grid is STILL RUNNING and no orders have been cancelled — "

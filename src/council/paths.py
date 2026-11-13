@@ -1,7 +1,7 @@
 """Where the council keeps its files.
 
-Everything lives under TRADEBUNNY_HOME/data/council, which git ignores: the
-personal mandate, the database and the price cache never reach the public repo.
+Everything lives under TRADEBUNNY_HOME/data/, which git ignores, so my mandate,
+the database and the price cache never reach the public repo.
 """
 
 from __future__ import annotations
@@ -16,8 +16,8 @@ def home() -> Path:
     return Path(os.getenv("TRADEBUNNY_HOME", ".")).resolve()
 
 
-# Three books, same rules: "main" waits for your OK, "autopilot" approves itself,
-# "rules" is the comparison: the committee's rules with no AI at all.
+# Three books, same rules: "main" waits for my OK, "autopilot" approves itself,
+# "rules" is the no-AI comparison book.
 BOOKS = {"main": "council", "autopilot": "council-autopilot", "rules": "council-rules"}
 BOOK_NAMES = {"main": "With you", "autopilot": "Autopilot", "rules": "Rules only"}
 BOOK_URLS = {"main": "/", "autopilot": "/autopilot/", "rules": "/rules-only/"}
@@ -49,8 +49,8 @@ SNAPSHOT = REPO / "examples" / "council" / "quotes_snapshot.json"
 
 
 def load_env() -> None:
-    """Read ANTHROPIC_API_KEY and friends from .env in the project (git-ignored).
-    Values already set in the environment win."""
+    """Load ANTHROPIC_API_KEY etc. from the git-ignored .env.
+    Values already in the environment win."""
     try:
         from dotenv import load_dotenv
     except ImportError:

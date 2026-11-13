@@ -1,16 +1,15 @@
 """Where an approved order goes.
 
-    PaperBroker   fills at the last real price, with the mandate's flat fee.
-                  The default, and the only broker that has been run.
-    IBKRBroker    limit orders to Interactive Brokers through IB Gateway on
-                  this Mac (`ib_async`). Built and tested against a fake;
-                  NOT yet run against a real IBKR account. Use an IBKR paper
-                  account (Gateway port 4002) first. Real money needs
-                  broker.live: true plus the confirmation phrase in the
-                  mandate, and every order still needs your approval.
+    PaperBroker   fills at the last real price plus the mandate's flat fee.
+                  The default, and the only one run so far.
+    IBKRBroker    limit orders to Interactive Brokers via IB Gateway on this
+                  Mac (`ib_async`). Tested against a fake only, NOT yet against
+                  a real account; start with an IBKR paper account (port 4002).
+                  Real money needs broker.live: true plus the confirmation
+                  phrase in the mandate, and every order still needs my OK.
 
-Nothing here decides anything: a broker is only called by `approvals.py`
-after you approve, or for a tranche of a plan you already approved.
+A broker decides nothing: `approvals.py` only calls it after I approve, or
+for a tranche of a plan I already approved.
 """
 
 from __future__ import annotations

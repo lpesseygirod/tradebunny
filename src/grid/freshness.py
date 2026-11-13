@@ -117,8 +117,7 @@ class Stamp:
 class FreshnessReport:
     """Every input, its age, and whether it is within tolerance.
 
-    The point is to answer "is this current?" by looking rather than by
-    reasoning. Anything not listed here is an input nobody is checking.
+    Answers "is this current?" by looking rather than by reasoning. Anything not listed here is an input nobody is checking.
     """
 
     stamps: list[Stamp] = field(default_factory=list)
@@ -159,7 +158,7 @@ def candle_age(candles: list[dict], now: Optional[float] = None,
                bar_ms: float = 3_600_000.0) -> Optional[float]:
     """How old the newest CANDLE is, in seconds.
 
-    Deliberately measured from the bar's own timestamp rather than from when it
+    Measured from the bar's own timestamp rather than from when it
     was fetched. A fetch performed a second ago that returned a bar from
     yesterday is stale data freshly delivered, and it is the data's age that
     decides whether the answer means anything.

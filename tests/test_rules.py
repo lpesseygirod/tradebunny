@@ -157,9 +157,9 @@ class TestLedgerImmutability:
         led.close()
 
     def test_tampering_with_the_twin_is_detectable(self, tmp_path):
-        """The twin is the primary control. While it sat outside _HASHED_COLS you
-        could wait for an outcome, swap the twin to a ticker you knew had lost,
-        re-score, and flip beats_twin to True with no integrity warning."""
+        """The twin is the primary control. While it sat outside _HASHED_COLS it
+        was possible to wait for an outcome, swap the twin to a ticker known to
+        have lost, re-score, and flip beats_twin to True with no integrity warning."""
         led = Ledger(tmp_path / "t.db")
         pid = led.record(dict(
             **{k: v for k, v in candidate().items() if k != "source_subjects"},

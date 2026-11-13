@@ -1,10 +1,10 @@
 """OKX public market data — candles and spot tickers.
 
 Public market data needs no API key and no signing. Only the private endpoints
-(orders, balances) require credentials, and this module deliberately contains
+(orders, balances) require credentials, and this module contains
 none of those: it reads, it never trades.
 
-Four things about this API will bite you, and each one is handled below:
+Four things about this API are easy to get wrong, and each is handled below:
 
   1. **Candles come back NEWEST first.** Every metric in `grid/metrics.py` —
      Hurst, ADX, efficiency ratio, ATR — assumes chronological order. Feeding
@@ -28,7 +28,7 @@ Errors arrive as HTTP 200 with a non-zero `code` in the body, so
     bad bar interval    {"code":"51000","data":[],"msg":"Parameter bar error"}
 
 Both would otherwise surface as a silent empty list, which the rubric would
-report as "not enough bars" — sending you to debug the wrong thing entirely.
+report as "not enough bars", which points debugging at the wrong thing.
 Every response passes through `_get`, which raises `OKXError` on either.
 
 Rate limit for these two endpoints: 20 requests per 2 seconds, per IP.
@@ -54,7 +54,7 @@ import requests
 
 BASE = "https://www.okx.com/api/v5"
 
-#: OKX truncates to this silently; we refuse instead. See module docstring.
+#: OKX truncates to this silently; this module refuses instead. See module docstring.
 MAX_CANDLES = 300
 
 #: `/market/history-candles` is documented at 100 per request. It is not: it
@@ -84,7 +84,7 @@ RATE_WINDOW = 2.0
 #: `rubric.assess` requires `bars_per_day` and gives it no default on purpose:
 #: ATR is measured per bar, so assuming one bar per day understates the cycle
 #: rate 24x on hourly candles and rejects every good intraday candidate. This
-#: map is deliberately small — add an interval only once you have checked what
+#: map is small on purpose: add an interval only after checking what
 #: it does to that calculation.
 BARS_PER_DAY: dict[str, float] = {
     "1H": 24.0,
@@ -98,8 +98,8 @@ _CALLS: deque[float] = deque()
 class OKXError(RuntimeError):
     """A non-zero `code` in an OKX response body, or a malformed one.
 
-    Carries the raw code so a caller can distinguish "you asked for a symbol
-    that does not exist" (51001) from a transient server fault.
+    Carries the raw code so a caller can distinguish "that symbol
+    does not exist" (51001) from a transient server fault.
     """
 
     def __init__(self, code: str, msg: str, endpoint: str) -> None:
@@ -239,7 +239,7 @@ def get_candles(inst_id: str, bar: str = "1H", limit: int = 300) -> list[dict[st
         >>> get_candles("BTC-USDT", "1H", 300)[0]
         {'ts': 1787781600000.0, 'open': 78727.4, ..., 'volume': 136.89053875}
 
-    `limit` is what we ask OKX for, not what you get back: the still-forming
+    `limit` is what is asked of OKX, not what comes back: the still-forming
     candle is dropped, so a request for 300 normally yields 299. `rubric.assess`
     needs 120 bars minimum — ask for at least 121.
 
@@ -385,7 +385,7 @@ def get_history(inst_id: str, bar: str = "1H", start_ts: Optional[float] = None,
         if start_ts is not None and oldest is not None and oldest <= start_ts:
             break
         # Ask for ONE BAR of deliberate overlap (`after` means "older than",
-        # so oldest + one step re-includes the bar we already hold). Without
+        # so oldest + one step re-includes the bar already held). Without
         # this the two endpoints abut exactly and the join is unverifiable —
         # contiguity would prove the timestamps line up, but nothing would
         # prove the two sources agree about the bar where they meet. One
@@ -414,7 +414,7 @@ def get_history(inst_id: str, bar: str = "1H", start_ts: Optional[float] = None,
     # These two must happen in this order. Trimming before the save would make
     # a narrow request DESTROY a wide cache: `get_history(start_ts=now - 365d)`
     # on a pair holding eight years of history would write back one year and
-    # silently discard the rest. That is exactly what happened here — the daily
+    # silently discard the rest. That happened here: the daily
     # scan asks for its 365-day statistics window, and it truncated twenty
     # pairs from 30-75k bars down to 8 759 before this was caught.
     #
@@ -501,7 +501,7 @@ def get_trade_fee(inst_id: str = "BTC-USDT",
     OKX_PASSPHRASE.
 
     OKX returns these rates NEGATIVE ("-0.0008") because they are charges
-    against you; a rebate would be positive. Both are returned here as positive
+    against the account; a rebate would be positive. Both are returned here as positive
     magnitudes, because `FeeModel` is documented in magnitudes and a sign error
     would turn a cost into income and make every grid look profitable.
 
@@ -616,8 +616,8 @@ def get_instruments(inst_type: str = "SPOT", *, use_cache: bool = True,
     something, which is rare, but "rare" is not "never" and a stale minSz means
     every order on that instrument is rejected.
 
-    This is the answer to a question the system could not previously ask: is
-    the order we are about to place large enough to exist? `MIN_QUOTE_PER_LEVEL`
+    This answers a question the system could not previously ask: is the
+    order about to be placed large enough to exist? `MIN_QUOTE_PER_LEVEL`
     was a flat 10 USDT guess standing in for it. Mostly right, and wrong for
     ZEC-USDT, whose minimum order is 12.25 USDT.
     """

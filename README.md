@@ -4,13 +4,13 @@
 
 TradeBunny is a crypto grid-trading system. A grid puts buy orders below the price and sell orders above it, so it makes small profits when the price goes up and down without really going anywhere. The hard part is finding markets where that actually happens, and not losing everything when it doesn't.
 
-So most of this project is about **measuring before trading**: it rejects almost every market, and it tells you exactly why.
+So most of this project is about **measuring before trading**: it rejects almost every market, and it says exactly why.
 
 The measuring gave a clear answer: **the strategy has no real edge, so I retired it.** Before running the final test I wrote down the rule that would decide it, and when the numbers came in I followed the rule ([the result](#the-result-no-edge-so-i-retired-it)).
 
 ![An offline scan: every coin rejected, each with its reasons](docs/media/scan.png)
 
-> Status: **retired on 14 September 2026**, by a pass/fail rule I wrote before seeing the results. Everything is built and kept as the record: the analyst, backtester, executor, risk rules and app, with 1,279 tests. Paper trading works end to end (a simulated exchange that fills orders at live OKX prices), but the analyst correctly proposes nothing. It has never traded real money, and the client that would send real orders to OKX was never built.
+> Status: **retired on 14 September 2026**, by a pass/fail rule I wrote before seeing the results. Everything is built and kept as the record: the analyst, backtester, executor, risk rules and app, with 1,428 tests. Paper trading works end to end (a simulated exchange that fills orders at live OKX prices), but the analyst correctly proposes nothing. It has never traded real money, and the client that would send real orders to OKX was never built.
 
 **Try it offline** (no API key, no exchange, real OKX candles saved in `examples/`):
 
@@ -82,7 +82,7 @@ The plain grid lost money on unseen data: **−1.41%** on average across the 29 
 
 A and B only look better because they hardly trade. C looked like a winner, but when I split its profit apart, it **earned less from actual trades** than the plain grid (+17.29 vs +25.14 per 1,000 invested). Its whole advantage came from ending up holding less coin. Its confidence interval also crossed zero, and removing its two best pairs left almost nothing.
 
-The rule asked for one more test on a second, separate time window. C again made less from trading than the plain grid, in both windows. That meant the rule's answer was "retire", so I stopped. Holding less coin is a choice you can make directly. It doesn't need a grid.
+The rule asked for one more test on a second, separate time window. C again made less from trading than the plain grid, in both windows. That meant the rule's answer was "retire", so I stopped. Holding less coin is something I can choose directly. It doesn't need a grid.
 
 The full numbers, including a mistake I made in describing one of the windows, are in [`docs/backtest_results.md`](docs/backtest_results.md).
 
@@ -100,19 +100,19 @@ Python 3.12 or newer (tested on 3.13 and 3.14).
 
 ```bash
 pip install -r requirements.txt
-python -m pytest                                    # 1,279 tests, offline
+python -m pytest                                    # 1,428 tests, offline
 python scripts/demo.py                              # offline demo: scan + app
 PYTHONPATH=src python -m grid.cli backtest ETH-USDT --candles examples/candles/ETH-USDT_1H.json
 ```
 
-With network access, the real commands are in the [`Makefile`](Makefile): `make scan`, `make web`, `make run` (the executor, trading on paper at live prices), `make check` (tests + a live OKX connectivity check). OKX public market data needs no key. Copy `.env.example` to `.env` to add a **read-only** OKX key (only used to read your fee tier) and the app token.
+With network access, the real commands are in the [`Makefile`](Makefile): `make scan`, `make web`, `make run` (the executor, trading on paper at live prices), `make check` (tests + a live OKX connectivity check). OKX public market data needs no key. Copy `.env.example` to `.env` to add a **read-only** OKX key (only used to read my fee tier) and the app token.
 
 ## Project layout
 
 ```
 src/grid/         the trading system: analyst, backtest, executor, risk rules, app
 src/ledger/       an earlier experiment: a news-prediction journal (docs/LEDGER.md)
-tests/            1,279 offline tests
+tests/            1,428 offline tests
 examples/candles/ real OKX hourly candles for the offline demo
 docs/             design notes (DESIGN.md), the maths behind sizing (THEORY.md), results
 ```

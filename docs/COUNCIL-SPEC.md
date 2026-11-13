@@ -1,9 +1,9 @@
 # Investment council — build spec
 
-Status: spec only, nothing built yet (12 Nov 2026). Sources: the TraderBunny
-claude.ai project ("Trader committee team" chat, "Portfolio analysis" chat,
-the Investment Committee Report, and the Sept/Oct review docs). The latest
-review (6 Oct 2026, "Supply Chain Market Review") wins where docs disagree.
+Status: built, in `src/council/`. This is the plan I wrote before building it (12 Nov 2026). Sources: my own committee
+notes (team structure and portfolio analysis), my Investment Committee Report,
+and my Sept/Oct review docs. The latest review (6 Oct 2026, "Supply Chain
+Market Review") wins where they disagree.
 
 ## Decisions already made
 
@@ -20,12 +20,12 @@ review (6 Oct 2026, "Supply Chain Market Review") wins where docs disagree.
 - The repo is public: real holdings, amounts and the personal mandate live in
   a local, git-ignored file; only `mandate.example.yaml` is committed.
 
-## Organisation (from the "Trader committee team" chat)
+## Organisation (from my committee notes)
 
 Two chambers, blind research, plain-code backbone.
 
-- **Layer 0, the principal (Lea).** Owns the mandate file. Only she changes
-  it, at the quarterly review. Agents may only propose a rule change memo.
+- **Layer 0, me.** I own the mandate file and only I change it, at the
+  quarterly review. Agents may only propose a rule change memo.
 - **Layer 1, code (no AI):** mandate gate (universe + rules, runs first);
   data steward (every number has a source and a date, stale data rejected,
   agents may only cite its fact sheet); risk engine (the only veto); sizing
@@ -76,7 +76,7 @@ Two chambers, blind research, plain-code backbone.
 - AI-linked single stocks below half of the single-stock part (latest rule;
   the older rule was under 20% / 25% of the total). Trim one AI name before
   adding another.
-- Two risk settings: Conservative (falls of ~20% would make you sell) and
+- Two risk settings: Conservative (falls of ~20% would make me sell) and
   Growth-tilted (10-year horizon, can hold through ~35%). Amount, horizon and
   maximum loss must be written down before any money moves.
 - Model allocations (Conservative / Growth): MSCI World 25/35%, Europe ETF
@@ -92,7 +92,7 @@ Two chambers, blind research, plain-code backbone.
 ### More rules from the Sept–Oct portfolio reviews (2 Oct Full Review is latest for the portfolio)
 
 - No position below 3%; single stock max 6% in these docs vs about 5% in the
-  6 Oct review. Open question for Lea: which cap wins (default: 5%).
+  6 Oct review. Open question for me: which cap wins (default: 5%).
 - Max 10 single stocks; adding a name means selling one of the ten first.
 - AI-sensitive names (Prysmian, Vulcan, Ajinomoto, ASML, TSMC): Conservative
   18% (cap 20%), Growth 20% (cap 25%).

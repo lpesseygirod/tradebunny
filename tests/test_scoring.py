@@ -131,11 +131,11 @@ class TestScorecard:
         assert c.twin_mean_net_excess == pytest.approx(-0.05)
         assert c.beats_twin is True
 
-    def test_filter_value_measures_the_owners_judgement(self):
+    def test_filter_value_measures_my_judgement(self):
         c = build_scorecard(self.rows)
         assert c.taken == 2
         assert c.taken_mean_net_excess == pytest.approx(0.4)
-        assert c.filter_value == pytest.approx(0.3)   # her picks beat the average
+        assert c.filter_value == pytest.approx(0.3)   # my picks beat the average
 
     def test_unresolved_rows_are_excluded(self):
         c = build_scorecard(self.rows + [dict(net_excess_pct=None, hit=None,

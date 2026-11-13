@@ -1,23 +1,19 @@
-"""Stages 1 and 2: the scout looks for new ideas, the analyst writes the homework.
+"""New ideas: the scout looks for them, the analyst writes the homework.
 
-    1. Screening   once a week, the scout looks BEYOND the watch list for
-                   businesses that may be chokepoints ("whoever wins, they must
-                   buy from this company"). It suggests up to three names, each
-                   checked by code: it must have a real price, and it must not
-                   be already held, watched or rejected.
-    2. Research    for each new idea, and for any name the committee is about
-       file        to debate, an analyst writes a research file: how the
-                   company makes money, the five-point test, financials,
-                   management, competition, risks, with sources and dates. Files
-                   are kept and rewritten after `research_refresh_days` or after
-                   new results, so each meeting starts from homework, not from
-                   scratch.
+    Screening   once a week the scout looks BEYOND the watch list for
+                chokepoints ("whoever wins, they must buy from this
+                company"). Up to three names, each checked by code: it must
+                have a real price and not be held, watched or rejected.
+    Research    for each new idea, and any name about to be debated, the
+    file        analyst writes a research file (business model, five-point
+                test, financials, management, competition, risks) with
+                sources and dates. Files are rewritten after
+                `research_refresh_days` or new results.
 
-A file that says "send to the committee" puts the idea on the shortlist,
-which lets the council hold a meeting about it. Nothing is bought from here:
-a meeting must still grade it, the risk engine must allow it, and on your
-book you must approve it. With the portfolio full (10 of 10 stocks), a new
-name can only come in through a swap at the monthly portfolio meeting.
+A file that says "send to the committee" puts the idea on the shortlist.
+Nothing is bought from here: a meeting still has to grade it, the risk
+engine has to allow it, and on my book I approve it. With the portfolio
+full (10 of 10 stocks), a new name only comes in through a swap.
 """
 
 from __future__ import annotations
@@ -65,8 +61,8 @@ SCOUT = Role(
     "does not already own or watch, with real evidence from this round. Never suggest "
     "a name on the rejected list. Give the exact Yahoo Finance ticker. " + agents.GUARD)
 
-# Offline ideas, so the demo can show the pipeline. Real companies, but the
-# scripted scout did no research: everything it says is labelled as such.
+# Offline ideas so the demo shows the pipeline. Real companies, but no
+# research behind them, and labelled as such.
 SCRIPTED_IDEAS = [
     Idea(ticker="BESI.AS", name="BE Semiconductor", theme="chip packaging",
          chokepoint="Hybrid-bonding tools for stacking AI memory and chips; very few makers.",

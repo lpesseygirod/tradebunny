@@ -1,6 +1,6 @@
 """News ingestion — the 'search the internet' half of the morning run.
 
-Alpaca's news endpoint is the primary source because you already have the keys for
+Alpaca's news endpoint is the primary source because I already have the keys for
 price data, so it costs nothing extra. It carries a `symbols` field on every article,
 which matters more than it looks: that list is what `rules.py` uses to reject
 first-order predictions. Without knowing what an article is ABOUT, the whole
@@ -44,9 +44,9 @@ def fetch(
 ) -> list[dict[str, Any]]:
     """Raw articles from the last `hours_back` hours, newest first.
 
-    Passing `symbols=None` returns general market news, which is what you want —
-    restricting to your universe would only ever surface first-order stories about
-    companies you already follow, and those are exactly the ones already priced.
+    Passing `symbols=None` returns general market news, which is what I want.
+    Restricting to my universe would only surface first-order stories about
+    companies I already follow, and those are exactly the ones already priced.
     """
     start = (datetime.now(timezone.utc) - timedelta(hours=hours_back)) \
         .isoformat(timespec="seconds")
@@ -78,8 +78,8 @@ def fetch(
 def is_reactive(headline: str) -> bool:
     """True for headlines that report a price move rather than a cause.
 
-    'Nucor shares jump 6%' tells you the move already happened. 'Nucor signs
-    supply agreement with Ford' tells you something that has consequences.
+    'Nucor shares jump 6%' says the move already happened. 'Nucor signs
+    supply agreement with Ford' says something that has consequences.
     Only the second kind is tradeable at daily frequency.
     """
     h = headline.lower()
@@ -90,7 +90,7 @@ def to_items(articles: list[dict[str, Any]], max_items: int = 12) -> list[dict[s
     """Normalise into the shape `reason.generate()` expects, filtering hard.
 
     Filtering here is a cost control as much as a quality control: every article
-    that reaches the model is tokens you pay for, and reactive headlines produce
+    that reaches the model is tokens I pay for, and reactive headlines produce
     nothing but confident nonsense.
     """
     items: list[dict[str, Any]] = []

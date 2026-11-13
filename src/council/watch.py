@@ -1,19 +1,17 @@
-"""Stage 5: watching what we own, between the quarterly reviews.
+"""Watching what I own between the quarterly reviews.
 
-Every evening the daily job looks at each stock held:
+Every evening the daily job checks each stock held for:
 
     earnings   results came out in the last few days
     drop       the price fell `big_drop` (10%) or more in one day
 
-Each event raises one alert (never twice for the same event). A sentinel
-then reads what happened (the results, the news, the thesis breakers on
-file) and answers one question: noise, keep watching, or convene the
-committee? Only "convene" leads anywhere: an urgent holding review, the full
-meeting, where a sale still needs a named thesis breaker and your OK. A
-price drop alone never sells.
+Each event raises one alert, never twice. A sentinel reads what happened
+against the thesis breakers on file and answers: noise, watch, or convene
+the committee? Only "convene" leads anywhere: an urgent holding review,
+where a sale still needs a named thesis breaker and my OK. A price drop
+alone never sells.
 
-Without an AI key the alert is still raised and shown, marked "open": the
-sentinel needs the key to judge it.
+Without an AI key the alert is still shown, marked "open".
 """
 
 from __future__ import annotations

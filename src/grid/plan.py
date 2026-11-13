@@ -1,11 +1,11 @@
 """The Plan — the command the thinking bot hands to the trading bot.
 
-This is the contract between the two halves. The analyst produces a Plan, you
+This is the contract between the two halves. The analyst produces a Plan, I
 approve or reject it, and only an APPROVED plan is something the executor will
 act on. The executor never reasons: it reads a Plan and does exactly what it says.
 
-Keeping this a plain serialisable object matters for three reasons: you can write
-one by hand to test the executor without involving any AI; you can read a plan and
+Keeping this a plain serialisable object matters for three reasons: I can write
+one by hand to test the executor without involving any AI; I can read a plan and
 see precisely what the bot will do before it does it; and the executor can rebuild
 its state after a crash from the plan plus the exchange, never from local memory.
 """
@@ -42,7 +42,7 @@ SPOT_SEGMENTS = 2
 #:
 #:   "arithmetic" each level is a fixed PRICE above the last. Simpler to read,
 #:                and wrong in a specific way: evenly spaced in price means the
-#:                percentage gap SHRINKS as you climb. A 100-200 ladder with 150
+#:                percentage gap SHRINKS going up. A 100-200 ladder with 150
 #:                levels is 0.67% apart at the bottom and 0.33% at the top, so
 #:                the upper half hands roughly twice as much of its gross to the
 #:                exchange as the lower half. Kept as an option because the
@@ -91,11 +91,11 @@ def spot_instrument_problems(symbol: str) -> list[str]:
 
 
 class Status(str, Enum):
-    PROPOSED = "proposed"     # analyst produced it, awaiting your decision
-    APPROVED = "approved"     # you said yes; executor may start
-    REJECTED = "rejected"     # you said no; never runs
+    PROPOSED = "proposed"     # analyst produced it, awaiting my decision
+    APPROVED = "approved"     # I said yes; executor may start
+    REJECTED = "rejected"     # I said no; never runs
     RUNNING = "running"       # executor has live orders
-    STOPPED = "stopped"       # you stopped it; orders cancelled
+    STOPPED = "stopped"       # I stopped it; orders cancelled
     STOPPED_OUT = "stopped_out"   # price broke the range; auto-liquidated
     COMPLETED = "completed"   # ran to its end date
 
@@ -205,7 +205,7 @@ class GridPlan:
 
         On a GEOMETRIC ladder every gap is the same fraction, so this equals
         `min_spacing_pct` and the distinction stops mattering. On an ARITHMETIC
-        one the gap shrinks as a percentage as you climb, and this is the widest
+        one the gap shrinks as a percentage going up, and this is the widest
         (best) figure on the ladder — use `min_spacing_pct` for anything that
         decides whether the grid is viable.
         """
@@ -256,7 +256,7 @@ class GridPlan:
         """Return a list of problems. An empty list means the plan is sane.
 
         The executor refuses to run a plan that fails this, so a bad proposal
-        cannot reach the exchange even if you approve it by accident.
+        cannot reach the exchange even if I approve it by accident.
         """
         fees = fees or FeeModel()
         problems: list[str] = []
@@ -334,10 +334,10 @@ class GridPlan:
 
     def stop(self, reason: Status = Status.STOPPED) -> "GridPlan":
         """Halt a running grid. Terminal — a stopped plan is never restarted;
-        the analyst must propose a fresh one, which you approve again.
+        the analyst must propose a fresh one, which I approve again.
 
         Guarded, because an unguarded stop() accepting any Status could revive a
-        dead plan: `p.reject(); p.stop(Status.RUNNING)` would leave a plan you
+        dead plan: `p.reject(); p.stop(Status.RUNNING)` would leave a plan I
         explicitly refused in a live state.
         """
         if reason not in self._TERMINAL:
@@ -375,7 +375,7 @@ class GridPlan:
         return path
 
     def summary(self) -> str:
-        """One-screen description, for the approval message on your phone."""
+        """One-screen description, for the approval message on my phone."""
         return (
             f"{self.symbol}  {self.lower:g} – {self.upper:g}\n"
             f"{self.levels} levels · {self.spacing_pct:.2%} apart"

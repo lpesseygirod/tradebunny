@@ -3,12 +3,12 @@
 Design principle: **fail closed.** Every check here answers "am I allowed to trade?"
 and returns False whenever it cannot be sure. A corrupt file, a missing directory,
 a permissions error — all of them halt trading rather than permit it. The expensive
-failure is a bot that keeps trading when you wanted it stopped; a bot that stops
-when it didn't need to costs you nothing but a restart.
+failure is a bot that keeps trading when I wanted it stopped; a bot that stops
+when it didn't need to costs nothing but a restart.
 
-The state lives in a plain JSON file, deliberately. It must be changeable when the
-Telegram bot is down, when the executor is wedged, and from a phone over SSH. You
-can stop everything with a text editor, and that is the point.
+The state lives in a plain JSON file. It must be changeable when the Telegram
+bot is down, when the executor is wedged, and from a phone over SSH. Everything
+can be stopped with a text editor.
 
 Three levels:
     1. halt_symbol("BTC-USDT")  one instrument stops; everything else continues
@@ -91,7 +91,7 @@ class ControlState:
     # (`executor.admit`): a grid over either cap places no orders.
     max_concurrent_grids: int = 3     # grids running at once
     max_total_quote: float = 500.0    # the most any one grid may commit
-    live_trading: bool = False        # explicit opt-in; paper until you flip it
+    live_trading: bool = False        # explicit opt-in; paper until I flip it
 
 
 class Control:
@@ -112,7 +112,7 @@ class Control:
     def _parse(raw: dict[str, Any]) -> ControlState:
         """Strictly typed load. Raises on anything unexpected, so the caller halts.
 
-        json.loads gives us whatever is in the file, and Python truthiness is the
+        json.loads returns whatever is in the file, and Python truthiness is the
         trap: the STRING "false" is truthy, so a hand-edited
         {"trading_enabled": "false", "live_trading": "true"} would ignore a halt
         AND arm real money without the confirmation phrase. The file is meant to be
@@ -150,7 +150,7 @@ class Control:
 
         A MISSING file halts too. It used to return enabled defaults, which meant a
         process started from the wrong directory — or one whose control file had
-        been moved or deleted — would cheerfully trade while you believed everything
+        been moved or deleted — would trade while I believed everything
         was stopped. Call initialise() once to create the file deliberately.
         """
         try:
@@ -197,7 +197,7 @@ class Control:
 
     def _write(self, s: ControlState) -> None:
         """Atomic write — a half-written control file would fail closed and halt
-        the bot, so we never leave one on disk."""
+        the bot, so one is never left on disk."""
         s.updated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=str(self.path.parent), suffix=".tmp")
@@ -268,7 +268,7 @@ class Control:
     # --------------------------------------------------------------- resume
 
     def resume_all(self) -> ControlState:
-        """Clear every halt. Deliberately does NOT enable live trading — coming
+        """Clear every halt. Does NOT enable live trading — coming
         back from a stop should never silently re-arm real money."""
         def f(s: ControlState) -> None:
             s.trading_enabled = True

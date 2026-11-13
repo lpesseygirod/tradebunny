@@ -1,22 +1,20 @@
-"""How the council learns: by checking its past calls against what happened.
+"""How the council learns: by checking past calls against what happened.
 
-This is the scorekeeper from the committee design, and it follows that
-design's warning: with a few decisions a year, an AI that "learns from
-experience" mostly learns from luck. So nothing here changes a rule or a
-prompt on its own. It measures, it explains, and it proposes lessons that
-only you can approve.
+The scorekeeper from the committee design, with its warning in mind: with a
+few decisions a year, an AI that "learns from experience" mostly learns from
+luck. So nothing here changes a rule or a prompt by itself. It measures,
+explains and proposes lessons that only I can approve.
 
-  1. Tracking. Every decision (buy, add, hold, watch, avoid, sell) is marked
-     on the day it was made, and again after about 1, 3, 6 and 12 months:
-     the stock against the same money in MSCI World. Names the council
-     refused are tracked too: a stock it avoided that then beat the index
-     by 20 points is a mistake, just a quiet one.
-  2. Judging. Each mark is judged right, wrong, or too close to call.
-  3. Post-mortems, when a decision clearly went wrong: what happened, did
-     the council see it coming (did the red team name it, did the CIO
-     answer it), and was it bad judgment, bad luck or simply too early.
-  4. Lessons. A post-mortem may propose one or two. You approve or reject
-     them; approved lessons are read by every member before every meeting.
+  1. Tracking. Every decision is marked on the day it was made and again
+     after about 1, 3, 6 and 12 months, against the same money in MSCI
+     World. Refused names count too: avoiding a stock that then beats the
+     index by 20 points is a mistake, just a quiet one.
+  2. Judging. Each mark is right, wrong or too close to call.
+  3. Post-mortems when a decision clearly went wrong: what happened, did the
+     council see it coming (red team named it? CIO answered it?), and was it
+     bad judgment, bad luck or just too early.
+  4. Lessons. A post-mortem may propose one or two. I approve or reject them;
+     approved lessons are read by every member before every meeting.
 """
 
 from __future__ import annotations
@@ -58,10 +56,10 @@ def _age_days(day: str) -> float:
 
 
 def update_marks(store: Store, steward: Steward, m: Mandate) -> int:
-    """Add the 1, 3, 6 and 12-month marks that have come due. Returns how many.
+    """Add the 1, 3, 6 and 12-month marks that are due. Returns how many.
 
-    Measured at the daily review that first finds a horizon passed, so a
-    "3-month" mark is taken on the first run after day 91, at that day's price.
+    Taken at the first daily review after a horizon passes, so a "3-month"
+    mark uses the price of the first run after day 91.
     """
     starts = {x["meeting_id"]: x for x in store.marks() if x["horizon_days"] == 0}
     have = {(x["meeting_id"], x["horizon_days"]) for x in store.marks()}
@@ -235,7 +233,7 @@ def postmortems_this_month(store: Store) -> int:
 # --------------------------------------------------------------- lessons
 
 def lessons_text(store: Store) -> str:
-    """What every member reads before a meeting. Only lessons you approved."""
+    """What every member reads before a meeting: only lessons I approved."""
     approved = store.lessons("approved")
     if not approved:
         return ""
@@ -385,11 +383,11 @@ def forecast_record_text(store: Store, minimum: int = 5) -> str:
     return "\n".join(lines)
 
 
-# ------------------------------------------------------------- your calls
+# --------------------------------------------------------------- my calls
 
 def your_calls(store: Store, m: Mandate) -> list[dict]:
-    """Every proposal you answered, with your reason and how the stock did since.
-    Approving a buy, or rejecting a sale, is a bullish call; the reverse is bearish."""
+    """Every proposal I answered, with my reason and how the stock did since.
+    Approving a buy or rejecting a sale is a bullish call; the reverse is bearish."""
     marks = {r["meeting_id"]: r for r in outcomes(store, m)}
     out = []
     for p in store.proposals():

@@ -1,8 +1,8 @@
 """The AI step: turn today's news and filings into falsifiable theses.
 
-This is where Claude does the actual thinking. The prompt is deliberately adversarial
-about its own output, because the failure mode of an LLM here is not silence — it is
-a beautiful, confident, wrong causal chain that reads exactly like a correct one.
+This is where Claude does the thinking. The prompt is adversarial about its own
+output, because the failure mode of an LLM here is not silence: it is a confident,
+wrong causal chain that reads exactly like a correct one.
 
 Nothing this module returns is trusted. Every candidate goes through rules.validate().
 """
@@ -162,5 +162,5 @@ def critique(candidate: dict[str, Any], client: anthropic.Anthropic | None = Non
     try:
         return json.loads(text[text.index("{"): text.rindex("}") + 1])
     except (ValueError, json.JSONDecodeError):
-        # A sceptic we cannot parse is not a reason to let the candidate through.
+        # An unparseable critique is not a reason to let the candidate through.
         return {"kill": True, "reason": "critique unparseable", "confidence_adjustment": 0.0}

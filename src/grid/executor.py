@@ -2,9 +2,8 @@
 
 The other half of this system reasons. This half does not. It contains no model
 call, no threshold it may reinterpret, and no branch that depends on anything
-other than the plan, the exchange and the control file. If you find yourself
-adding a decision here, it belongs in `analyst.py` and needs your approval
-before it runs.
+other than the plan, the exchange and the control file. Any decision belongs
+in `analyst.py` and needs my approval before it runs.
 
 Four rules, each of which exists because of a specific way grid bots lose money:
 
@@ -32,7 +31,7 @@ Four rules, each of which exists because of a specific way grid bots lose money:
 WHAT "OCCUPIED" MEANS. The exchange reports one number for the base balance, not
 a list of lots. To decide which ladder levels already hold stock, the executor
 assumes the lots sit at the levels nearest below the current price and works
-downward until the balance is used up. That inference is deliberately the
+downward until the balance is used up. That inference is the
 conservative one: assuming lots sit high marks MORE levels as occupied (a lot
 costs fewer units at a higher price), which places FEWER new buy orders. Being
 wrong in this direction under-deploys capital; being wrong the other way would
@@ -138,7 +137,7 @@ def plan_order_ids(plan: GridPlan) -> set[str]:
 
 class Exchange(Protocol):
     """What the executor needs. Implemented by PaperExchange and, eventually,
-    a live OKX client. Deliberately small — the executor should not be able to
+    a live OKX client. Kept small: the executor should not be able to
     do anything more interesting than this."""
 
     is_live: bool
@@ -306,7 +305,7 @@ class PaperExchange:
     def fund(self, symbol: str, plan_id: str, quote: float) -> bool:
         """Give an approved plan its paper money, once.
 
-        A paper grid needs quote currency to buy with, and the only honest
+        A paper grid needs quote currency to buy with, and the only fair
         amount is the one that was approved. Recorded by plan id so a restart,
         or a second plan on the same symbol, is never funded twice. Returns
         True if money was added on this call.
@@ -367,7 +366,7 @@ class BelowMinimumSize(RuntimeError):
 class LiveExchange:
     """Placeholder for the real OKX private client.
 
-    Deliberately not implemented. Every method raises, so there is no path by
+    Not implemented. Every method raises, so there is no path by
     which an incomplete live client can place a real order — a stub that
     silently did nothing would be worse, and one written against an API this
     repo has never been able to call would be worse still. Building it is its
@@ -804,8 +803,8 @@ def run_once(plan: GridPlan, exchange: Exchange, control: Control, *,
 
     # --- 1b. the plan must still be valid -------------------------------
     # README: "a plan that fails cannot run even if approved". Approval
-    # validates, but approval is not the last word — a plan is a JSON file the
-    # owner can edit by hand, which is a deliberate feature of `plan.py`, and
+    # validates, but approval is not the last word — a plan is a JSON file I
+    # can edit by hand, which is a feature of `plan.py`, and
     # a file edited into a state that gives half the gross to the exchange must
     # not be executed just because it was sound when it was signed off. Checked
     # every pass, not once, because the file can change between passes.
@@ -901,8 +900,8 @@ def run_once(plan: GridPlan, exchange: Exchange, control: Control, *,
             log.info("%s: %s already resting, leaving it", plan.symbol, cid)
         except CrossedSpread as e:
             # By construction `desired_orders` never prices through the mark, so
-            # reaching here means the mark moved under us or the ladder is wrong.
-            # Either way orders are not going on, which you need to know about.
+            # reaching here means the mark moved mid-pass or the ladder is wrong.
+            # Either way orders are not going on, and I need to know about it.
             log.warning("%s: refusing to cross the spread: %s", plan.symbol, e)
             state.rejected.append(cid)
             notify(f"⚠️ {plan.symbol}: order rejected — {e}")

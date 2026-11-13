@@ -18,7 +18,7 @@ So the minimum gross spacing between two grid levels is
 
 which for OKX spot at base tier is 0.160% all-maker, 0.200% all-taker.
 
-IMPORTANT — spot only. On margin or perpetual futures you also pay borrowing
+Spot only. Margin and perpetual futures also charge borrowing
 interest and funding, typically charged every 8 hours. At ±0.01% per funding
 period that is roughly 11% annualised, which dwarfs trading fees and will quietly
 eat a grid alive. A spot grid has no interest component at all, which is why this
@@ -115,7 +115,7 @@ class FeeModel:
                           maker: bool = True) -> float:
         """How many winning cycles it takes to recover a loss of this size.
 
-        Sobering to compute before running anything: a 20% drawdown at 0.8%
+        A 20% drawdown at 0.8%
         spacing needs roughly 31 clean cycles to undo. This is the number that
         makes the case for a stop-loss.
         """

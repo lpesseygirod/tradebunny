@@ -2,10 +2,10 @@
 
 For every real prediction, generate a random one from the same universe with the
 same horizon. Score both identically. If the reasoned predictions do not beat their
-own coin flips, there is no edge, and you learn that in weeks for the cost of a few
+own coin flips, there is no edge, and I learn that in weeks for the cost of a few
 lines of code instead of in years for the cost of real money.
 
-This is the single most important honesty mechanism in the project.
+This is the most important check in the project.
 """
 
 from __future__ import annotations

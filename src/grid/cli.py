@@ -11,17 +11,17 @@
     python -m grid.cli backtest SYM  replay a fitted grid over recent candles
     python -m grid.cli check         connectivity, used by `make check`
 
-TWO PROCESSES, DIFFERENT LIFETIMES. That asymmetry is the point of this file:
+TWO PROCESSES, DIFFERENT LIFETIMES. Most of this file follows from that:
 
-  the analyst   runs ONLY when you ask — the web button or `cli scan`. There is
-                deliberately no cron entry for it. A scanner on a timer produces
+  the analyst   runs ONLY when I ask: the web button or `cli scan`. There is
+                no cron entry for it, on purpose. A scanner on a timer produces
                 a candidate every day whether or not the day deserved one, and
                 the pressure to approve something is the failure this whole
                 design is built to avoid. An empty day should cost nothing.
 
   the executor  runs CONTINUOUSLY, and must. `plan.stop_below` is enforced by
                 `run_once` and by nothing else — the exchange holds the resting
-                limit orders but has never heard of your stop. A stopped
+                limit orders but has never heard of my stop. A stopped
                 executor is therefore not "paused", it is every open grid
                 running with no stop-loss, which is why it is supervised, why
                 it writes a heartbeat, and why the web page shouts when that
@@ -29,7 +29,7 @@ TWO PROCESSES, DIFFERENT LIFETIMES. That asymmetry is the point of this file:
 
 SIGTERM DOES NOT CANCEL ORDERS. Stopping the process is not the same as closing
 the position, exactly as `control.halt_all` does not liquidate. The resting
-ladder is left where it is so a restart picks it up unchanged. What you lose
+ladder is left where it is so a restart picks it up unchanged. What is lost
 while it is down is the stop — hence the warning, not a fire sale.
 """
 
@@ -144,7 +144,7 @@ def run_loop(control: Control, *, exchange=None, plans_dir: Path = PLANS_DIR,
     Exceptions from one plan do not stop the others, and do not stop the loop:
     a transient exchange error on one symbol must not take the stop-loss away
     from every other grid. Anything that escapes the whole pass is recorded on
-    the heartbeat and re-raised, so the supervisor can restart and tell you.
+    the heartbeat and re-raised, so the supervisor can restart and tell me.
 
     Paper trading: with no `exchange` given, the loop builds the paper exchange
     itself and feeds it real OKX prices every pass (`sync_paper_market`), and
@@ -163,7 +163,7 @@ def run_loop(control: Control, *, exchange=None, plans_dir: Path = PLANS_DIR,
     stopping = {"now": False}
 
     def _stop(signum, _frame):
-        # Note what is NOT here: no order cancellation. See the module docstring.
+        # No order cancellation here. See the module docstring.
         log.info("signal %s received — finishing this pass and exiting; "
                  "resting orders are left in place", signum)
         stopping["now"] = True
@@ -262,7 +262,7 @@ def supervise(argv: Sequence[str], *, notify: Callable[[str], None] = notify,
               max_restarts: Optional[int] = None,
               spawn=subprocess.Popen,
               sleep: Callable[[float], None] = time.sleep) -> int:
-    """Keep `run` alive, restarting it with backoff and telling you when it dies.
+    """Keep `run` alive, restarting it with backoff and telling me when it dies.
 
     A supervisor rather than a `try/except` inside the loop, because the
     failures that matter here are the ones that kill the process: an OOM, a
@@ -270,7 +270,7 @@ def supervise(argv: Sequence[str], *, notify: Callable[[str], None] = notify,
     with nothing watching means every grid is running without its stop.
 
     A clean exit (code 0, i.e. SIGTERM handled by the loop) is NOT restarted —
-    that is you stopping it on purpose.
+    that is me stopping it on purpose.
     """
     delay = RESTART_DELAY
     restarts = 0
@@ -362,7 +362,7 @@ def cmd_scan(args) -> int:
 
     floor = conf.threshold_for(report.level or conf.DEFAULT_LEVEL)
     print()
-    # BOTH windows, always. They are deliberately different lengths, and a
+    # BOTH windows, always. They are different lengths on purpose, and a
     # reader who sees only one will read the band as a year-long claim when it
     # is a six-week one.
     print(f"statistics window: {report.window_bars} bars, "

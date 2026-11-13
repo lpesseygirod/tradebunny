@@ -3,7 +3,7 @@
 Everything runs against PaperExchange. There are no live calls anywhere in this
 file and no network of any kind.
 
-The three scenarios the brief singles out have their own classes below:
+The three scenarios that matter most have their own classes below:
 TestRestartDoesNotDuplicate, TestHaltCancelsOrders, TestStopLiquidates.
 """
 
@@ -307,10 +307,10 @@ class TestNormalOperation:
         assert "not runnable" in st.note
 
 
-# ---------------------------------------------------- REQUIRED: restart safety
+# -------------------------------------------------------------- restart safety
 
 class TestRestartDoesNotDuplicate:
-    """'A restarted bot must never double-buy because it forgot what it held.'"""
+    """A restarted bot must never double-buy because it forgot what it held."""
 
     def test_running_twice_places_nothing_new(self, plan, ex, control, state_dir):
         first = run(plan, ex, control, state_dir)
@@ -346,7 +346,7 @@ class TestRestartDoesNotDuplicate:
 
     def test_a_restart_after_a_fill_does_not_rebuy_that_level(
             self, plan, control, state_dir, tmp_path):
-        """The specific double-buy: the level filled, we hold the stock, and a
+        """The specific double-buy: the level filled, the stock is held, and a
         forgetful bot would place another buy at the same price."""
         path = tmp_path / "paper.json"
         a = PaperExchange(path, quote=1300.0)
@@ -386,7 +386,7 @@ class TestRestartDoesNotDuplicate:
                     if o.client_order_id == resting.client_order_id]) == 1
 
 
-# ------------------------------------------------------- REQUIRED: halt path
+# ------------------------------------------------------------------- halt path
 
 class TestHaltCancelsOrders:
 
@@ -447,7 +447,7 @@ class TestHaltCancelsOrders:
         assert st.cancelled == [] and ex.fetch_open_orders(SYMBOL) == []
 
 
-# ------------------------------------------------------- REQUIRED: the stop
+# -------------------------------------------------------------------- the stop
 
 class TestStopLiquidates:
 
@@ -597,8 +597,8 @@ class TestNoDecisionsHere:
 class TestAnInvalidPlanIsRefused:
     """README: "a plan that fails cannot run even if approved".
 
-    Found by a sabotage pass: making `plan.validate()` return [] turned the
-    whole suite red only in `TestValidation`, because nothing downstream
+    I found this by making `plan.validate()` return []: the suite went red
+    only in `TestValidation`, because nothing downstream
     actually enforced it — the executor placed 75 orders on a ladder that gives
     48% of gross to the exchange. Approval is not the last word: a plan is a
     hand-editable JSON file, so this is re-checked on every pass.
@@ -718,8 +718,8 @@ class TestSpotOnlyReachesTheExecutor:
 
 
 class TestAnOrderBelowMinSizeNeverReachesTheExchange:
-    """The brief's specific ask: place an order below minSz against
-    PaperExchange, and assert the plan is rejected before it gets that far."""
+    """An order below minSz against PaperExchange: the plan must be
+    rejected before it gets that far."""
 
     def test_the_exchange_itself_rejects_a_sub_minimum_order(self, ex):
         """First establish that the exchange really would reject it."""

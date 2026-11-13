@@ -106,7 +106,7 @@ def har_forecast(prices: Sequence[float], bars_per_day: float = 24.0
     minimum-norm solution can return a forecast well below the realised level
     (measured: 0.69x on a synthetic constant-vol series). Real price series are
     heteroskedastic enough that this does not arise — the live OKX pairs return
-    ratios of 0.80-1.20 — but a forecast far below 1.0 on data you believe is
+    ratios of 0.80-1.20 — but a forecast far below 1.0 on data that looks
     calm is this artefact, not a signal. `MIN_SCALE` bounds the damage.
     """
     try:

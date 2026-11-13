@@ -5,7 +5,7 @@ low directionality, and those are different things.** People conflate them and p
 "volatile" assets, which is how grids die — a volatile asset in a trend is the worst
 possible case, because it accumulates losing positions quickly.
 
-What we actually want is an asset that moves a lot and gets nowhere. Each function
+What I actually want is an asset that moves a lot and gets nowhere. Each function
 here measures one half of that, and `rubric.py` combines them.
 
 Pure Python, no numpy — these run over a few hundred bars and the dependency isn't
@@ -61,10 +61,10 @@ def hurst(prices: Sequence[float], min_lag: int = 2, max_lag: int = 40) -> Optio
         H ~ 0.50  random walk — no edge either way.
         H < 0.45  mean-reverting — moves reverse. GOOD for a grid.
 
-    The 0.45–0.55 band is transitional and the honest answer there is "don't trade".
+    The 0.45–0.55 band is transitional and the answer there is "don't trade".
 
     Needs roughly 100+ bars to be stable; under 50 it is noise. And it is
-    descriptive, not predictive — it tells you how the asset behaved, and regime
+    descriptive, not predictive — it describes how the asset behaved, and regime
     changes only show up after they have started.
     """
     n = len(prices)
@@ -196,7 +196,7 @@ def atr_pct(highs: Sequence[float], lows: Sequence[float], closes: Sequence[floa
     """Average True Range as a fraction of price — how far it moves per bar.
 
     This is the revenue driver: it decides how many grid levels get crossed, and
-    therefore how often you complete a profitable cycle.
+    therefore how often a profitable cycle completes.
     """
     n = len(closes)
     if n < period + 1 or len(highs) != n or len(lows) != n:
@@ -404,7 +404,7 @@ def hurst_ci(prices: Sequence[float], n_boot: int = 1000,
     MOVING BLOCK bootstrap, not iid. An iid resample of returns destroys the
     autocorrelation, and autocorrelation is precisely the thing Hurst measures
     — an iid bootstrap would produce an interval centred on 0.5 for every input
-    and tell you nothing. Blocks of consecutive returns preserve local
+    and say nothing. Blocks of consecutive returns preserve local
     dependence while still varying the sample.
 
     BLOCK LENGTH MATTERS MORE THAN USUAL HERE, and the textbook rule is wrong
@@ -528,9 +528,9 @@ def benjamini_hochberg(pvalues: Sequence[float], alpha: float = 0.05
     Testing 30 assets at p<0.05 independently expects about 1.5 false positives
     — so on a quiet day the one candidate that "passed" is more likely to be
     noise than signal. BH controls the false DISCOVERY rate: of the candidates
-    you accept, at most `alpha` of them are expected to be spurious.
+    accepted, at most `alpha` of them are expected to be spurious.
 
-    Chosen over Bonferroni deliberately. Bonferroni controls the probability of
+    I chose BH over Bonferroni. Bonferroni controls the probability of
     ANY false positive, which at 30 tests means a threshold of 0.0017 and
     rejects nearly everything. BH is the right trade when the cost of a missed
     opportunity is zero (there is always tomorrow) but the cost of a false one
@@ -558,7 +558,7 @@ def suggest_range(prices: Sequence[float], coverage: float = 0.90,
                   ) -> Optional[tuple[float, float]]:
     """Propose a band containing `coverage` of recent prices, centred on the median.
 
-    Deliberately derived from observed price rather than from what would look
+    Derived from observed price rather than from what would look
     profitable — the most common way a grid is mis-specified is by drawing the
     range around a desired return instead of around where the asset has traded.
 
@@ -604,7 +604,7 @@ def suggest_range_both(prices: Sequence[float], coverage: float = 0.90,
                                   Optional[tuple[float, float]]]:
     """(unweighted, recency-weighted) bands for the same prices.
 
-    Returning both is the point. When they agree the range is settled; when
+    When they agree the range is settled; when
     they diverge the asset has moved and the unweighted band is describing a
     place it no longer trades. `rubric.assess` records the disagreement so a
     drifting range shows up as a number rather than as a surprise.

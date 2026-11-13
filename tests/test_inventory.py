@@ -51,7 +51,7 @@ class TestTheHardBound:
         assert a.peak_inventory == pytest.approx(b.peak_inventory)
 
     def test_the_DEFAULT_bound_actually_binds(self):
-        """THE POINT OF THE BOUND. A bound that never engages is decorative.
+        """A bound that never engages is decorative.
 
         Previously `Q_max` was `max_quote_total / lower`, reachable only if
         every rung filled at exactly the bottom price. `bars_at_bound` was zero
@@ -224,7 +224,7 @@ class TestTheBoundActuallyBinds:
     """
 
     def test_bars_at_bound_is_positive_on_a_straight_decline(self):
-        """THE REGRESSION TEST. A decline through every rung must hit it."""
+        """Regression test: a decline through every rung must hit it."""
         r = run(plan(), straight_down(), bars_per_day=24.0, **NAIVE)
         assert r.bars_at_bound > 0, (
             "the inventory bound did not engage on a straight decline through "

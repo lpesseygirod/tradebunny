@@ -1,6 +1,6 @@
 """SEC EDGAR client — Form 4 insider trades and Schedule 13D activist stakes.
 
-Free, no API key. Two things will bite you:
+Free, no API key. Two things to know:
   1. EDGAR returns 403 without a descriptive User-Agent containing a contact email.
   2. The rate limit is 10 requests/second and they do enforce it.
 

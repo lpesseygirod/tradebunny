@@ -178,7 +178,7 @@ class TestRecommendation:
 
 
 class TestNegativeKelly:
-    """'the label must be unmissable' — and it must not silently zero out."""
+    """The label must be unmissable, and it must not silently zero out."""
 
     def neg(self, **over):
         kw = dict(available_quote=10_000.0, risk_size=800.0, kelly_full=-0.4,
@@ -196,7 +196,7 @@ class TestNegativeKelly:
         assert NEGATIVE_KELLY_WARNING in r.warnings
 
     def test_the_candidate_is_still_sized_by_the_other_constraints(self):
-        """Not zeroed — the owner asked to still see these."""
+        """Not zeroed — I still want to see these."""
         r = self.neg()
         assert r.recommended > 0
         assert r.recommended == 800.0        # the risk constraint

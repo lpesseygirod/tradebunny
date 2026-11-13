@@ -81,9 +81,9 @@ _HASHED_COLS = [
     "magnitude_pct", "benchmark", "horizon_days", "confidence", "thesis",
     "chain", "falsifier", "source_url", "source_title", "company",
     "source_published_at",
-    # The twin is the project's primary control. Leaving it unhashed meant you
-    # could wait for an outcome, swap the twin to a ticker you knew had lost,
-    # re-run the scorer, and flip `beats_twin` to True with no integrity warning.
+    # The twin is the project's primary control. Left unhashed, the twin could be
+    # swapped after the outcome for a ticker known to have lost, re-scored, and
+    # `beats_twin` flipped to True with no integrity warning.
     "twin_ticker", "twin_direction",
 ]
 

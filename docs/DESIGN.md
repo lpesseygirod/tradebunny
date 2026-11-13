@@ -8,25 +8,25 @@ anywhere at runtime. Every number in a proposal comes from `metrics.py` and is
 tested by `rubric.py`; the approval note is a template over those same numbers.
 No API key, no model call, no network dependency beyond OKX's public endpoints.
 
-There used to be a model call that wrote the approval note. It was removed: it
+There used to be a model call that wrote the approval note. I removed it: it
 could only ever rephrase measurements that already existed, and a paragraph of
-fluent prose attached to a trading decision invites you to read the prose
+fluent prose attached to a trading decision tempts me to read the prose
 instead of the numbers.
 
 A spot grid-trading system in two halves that never mix:
 
-- **The analyst** (`src/grid/rubric.py`, `analyst.py`) — runs when you ask it to,
+- **The analyst** (`src/grid/rubric.py`, `analyst.py`) — runs when I ask it to,
   measures which instruments oscillate without going anywhere, and proposes grids.
   It measures. It never trades.
 - **The executor** (`src/grid/executor.py`) — takes an approved plan and applies it
   forever: buy at each level down, sell at each level up, stop if the range breaks.
   It has **no judgement and no discretion**. It reads parameters and obeys them.
 
-Between them sits you: every proposal needs your approval, with your chosen amount,
+Between them sits me: every proposal needs my approval, with the amount I choose,
 through the TradeBunny app.
 
 ```
-   OKX candles ──► analyst ──► proposal ──► YOU ──► approved plan ──► executor ──► paper exchange
+   OKX candles ──► analyst ──► proposal ──► ME ───► approved plan ──► executor ──► paper exchange
                  (measures)               (decide)                   (obeys)      (live OKX prices)
 ```
 
@@ -46,11 +46,11 @@ through the TradeBunny app.
 | `grid/web.py` | The approval app |
 | `ledger/` | The earlier news-prediction journal ([LEDGER.md](LEDGER.md)); the grid reuses its notifier and scoring |
 
-**1,279 tests, all offline.** Run `python -m pytest`.
+**1,428 tests, all offline.** Run `python -m pytest`.
 
 ---
 
-## The rules this system will not let you break
+## The rules this system will not let me break
 
 1. **Spot only.** No margin, no futures. That is where funding interest lives
    (~11%/yr) and it would eat the grid alive. Enforced in
@@ -61,7 +61,7 @@ through the TradeBunny app.
 2. **Limit orders only.** Maker fee, not taker, and a grid rests orders anyway.
    The executor must never cross the spread.
 
-   The rates are **read from your account**, not hardcoded —
+   The rates are **read from my account**, not hardcoded:
    `okx.get_trade_fee()` needs a READ-ONLY API key. If it cannot be read the
    system falls back to the **pessimistic** EEA tier (0.200% / 0.350%), never
    the optimistic one: an unavailable fee rate must not make a grid look more
@@ -87,7 +87,7 @@ through the TradeBunny app.
    about half and turned a "2% risk" into 4.25% — measured, not estimated.
 5. **Volatile is not the criterion.** The asset must move a lot AND go nowhere.
    Hurst < 0.45, ADX < 25, efficiency ratio < 0.30.
-6. **The range comes from where price has traded**, never from the return you want.
+6. **The range comes from where price has traded**, never from the return I want.
 7. **Paper by default.** Live trading requires `confirm="I ACCEPT THE RISK"`.
 8. **Fail closed.** An unreadable control file halts everything.
 
@@ -141,7 +141,7 @@ changes nothing. There is a test asserting that structurally (`web.py` calls no
 
 ### Why there is now a database
 
-Everything else persists as JSON files, deliberately — a plan is a file you can
+Everything else persists as JSON files on purpose: a plan is a file I can
 read and edit, and the executor rebuilds from the plan plus the exchange rather
 than from a database. That has not changed. But an append-only transaction
 ledger, unread notification state, and the executor writing while the web reads
@@ -173,12 +173,12 @@ launchctl list com.tradebunny.executor        # raw launchd view
 before login. Two problems with that here: the login keychain is still locked,
 so API credentials are unreadable and the executor would run in a degraded
 state that looks identical to a healthy one; and nobody is awake to notice it
-misbehaving. `RunAtLoad` on an agent means "when you log in", which is when you
-are present to watch trading start.
+misbehaving. `RunAtLoad` on an agent means "when I log in", which is when I
+am present to watch trading start.
 
 **`KeepAlive = { SuccessfulExit = false }`** restarts a crash and respects a
-clean stop. Plain `KeepAlive = true` would relaunch the process every time you
-deliberately stopped it.
+clean stop. Plain `KeepAlive = true` would relaunch the process every time I
+stopped it on purpose.
 
 **Logs** go to `data/logs/executor.out.log` and `.err.log`. launchd holds those
 files open and does not rotate them, so renaming would leave launchd writing to
@@ -197,7 +197,7 @@ bars since approval**, and alerts when the thesis has decayed — ADF no longer
 significant, Hurst over the gate, ADX over 25, or more than 30% of bars outside
 the band. It sends a before/after comparison.
 
-**It never closes anything.** Stopping is your decision, the same principle as
+**It never closes anything.** Stopping is my decision, the same principle as
 `halt_all` cancelling orders without liquidating. `grid drift` runs the check
 by hand.
 
@@ -223,7 +223,7 @@ Kelly would have said including when Kelly says do not trade. It will not hand
 back to Kelly sizing until **50 fills** are recorded; `grid execution` and the
 web panel show progress toward that.
 
-## Seeing what you are not seeing
+## Seeing the rejected candidates too
 
 Every candidate is scored, including ones a gate rejected, because zero
 proposals with a best score of 0.48 is a different result from zero with a best

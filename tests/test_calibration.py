@@ -39,7 +39,7 @@ class TestCalibrationSizing:
         assert "smaller minimum order size" in c.reason
 
     def test_a_lower_minsz_pair_fits_more_levels(self):
-        """'Prefer pairs with the lowest minSz.'"""
+        """Prefer pairs with the lowest minSz."""
         cheap = calibration_size(50.0, 0.5, 40)
         dear = calibration_size(50.0, 5.0, 40)
         assert cheap.levels > dear.levels
@@ -135,7 +135,7 @@ class TestExecutionQuality:
 
 
 class TestTheFiftyFillGate:
-    """'Refuse to switch until 50 fills are recorded.'"""
+    """Refuse to switch until 50 fills are recorded."""
 
     def test_the_requirement_is_fifty(self):
         assert FILLS_REQUIRED == 50

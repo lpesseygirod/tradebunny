@@ -1,33 +1,31 @@
-"""The council's own agenda, and the evening job that runs every stage.
+"""The council's own agenda, and the evening job that runs everything.
 
 The scan picks meetings in this order, until the month's slots run out:
 
   0. holdings the sentinel flagged (results or a big drop that may break
      the thesis): an urgent review
-  1. watch-list names whose buy trigger is HIT (forward P/E or price at or
-     below the committee's entry level), and holdings at their ADD level
-  2. the scout's shortlisted ideas (names only CLOSE to a trigger are listed,
-     not convened: they could only be told to wait)
-  3. holdings the monthly portfolio meeting asked the committee to review
+  1. watch-list names whose buy trigger is HIT, and holdings at their ADD
+     level
+  2. the scout's shortlisted ideas (names only CLOSE to a trigger are
+     listed, not convened: they could only be told to wait)
+  3. holdings the monthly portfolio meeting sent back for review
   4. holdings not reviewed for `review_holdings_every_days` (about quarterly)
 
-A name discussed in the last 14 days is skipped: the council does not
-re-argue the same stock every morning. Before a meeting, the stock gets a
-research file if it has none or it is stale, within the weekly budget.
+A name discussed in the last 14 days is skipped. Before a meeting, the
+stock gets a research file if it has none or it's stale, within the
+weekly budget.
 
-`daily` is what the scheduled job runs, in this order:
+`daily` is the scheduled job, in this order:
 
-    bookkeeping   expire stale proposals, buy approved tranches, measure
+    bookkeeping   expire stale proposals, buy approved tranches, score
                   past decisions, the watch-list deadline
-    watch         earnings and big drops on what we own (stage 5)
-    scout         once a week, new ideas (stage 1), then research files
-                  for them (stage 2)
+    watch         earnings and big drops on what I own
+    scout         once a week, new ideas, then research files for them
     portfolio     once a month, the whole book; may propose one swap
-    committee     the agenda above (stage 3)
+    committee     the agenda above
     post-mortems  decisions that clearly went wrong
 
-Every trade any of it proposes still waits for your OK (stage 4), except
-on the Autopilot book.
+Every trade still waits for my OK, except on the Autopilot book.
 """
 
 from __future__ import annotations
@@ -103,8 +101,8 @@ def agenda(store: Store, pf: Portfolio, m: Mandate, quotes: dict) -> dict:
             continue
         reason = "Buy trigger hit: " + w["line"]
         if w["status"] == "close":
-            # A grade-B name can't be bought before its trigger, so a meeting now could
-            # only say "watch": no AI is spent until the trigger is actually hit.
+            # A grade-B name can't be bought before its trigger, so a meeting now
+            # could only say "watch". No AI spent until the trigger is hit.
             skipped.append({"ticker": w["ticker"], "name": w["name"],
                             "why": "Close to its trigger, not there yet: it meets when the trigger is hit"})
             continue
@@ -185,8 +183,7 @@ def run(store: Store, steward: Steward, m: Mandate, pf: Portfolio, backend: Back
 
 def daily(store: Store, steward: Steward, m: Mandate, pf: Portfolio,
           backend: Optional[Backend] = None, stages_on: bool = True) -> list[str]:
-    """`stages_on=False` (the rules-only book): no watch, scout, research,
-    portfolio meeting or post-mortems; only the bookkeeping and the agenda."""
+    """`stages_on=False` (the rules-only book) runs only bookkeeping and the agenda."""
     events = []
     n = approvals.expire(store)
     if n:

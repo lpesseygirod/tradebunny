@@ -19,7 +19,7 @@ class TestThePlist:
 
     @pytest.mark.skipif(shutil.which("plutil") is None, reason="plutil is a macOS tool")
     def test_it_lints(self, tmp_path):
-        """plutil is the arbiter, not our own parser."""
+        """plutil is the arbiter, not my own parser."""
         p = tmp_path / "a.plist"
         p.write_bytes(render())
         r = subprocess.run(["plutil", "-lint", str(p)], capture_output=True,
@@ -158,7 +158,7 @@ class TestLogRotation:
         assert (tmp_path / "executor.out.log.1").stat().st_size > 0
 
     def test_the_inode_is_preserved(self, tmp_path):
-        """THE point. Renaming would leave launchd writing to the old inode and
+        """The key case. Renaming would leave launchd writing to the old inode and
         the live log permanently empty."""
         log = self.big(tmp_path / "executor.out.log")
         before = log.stat().st_ino

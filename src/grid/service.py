@@ -7,15 +7,14 @@ A LaunchDaemon runs at boot, as root, before anyone logs in. That is the wrong
 shape for this program twice over:
 
   1. **No keychain.** API credentials live in the login keychain, which is
-     locked until you log in. A daemon starting at boot would find no keys,
+     locked until I log in. A daemon starting at boot would find no keys,
      fall back to whatever it could read, and run in a degraded state that
      looks identical to a healthy one.
 
-  2. **Nobody is watching.** `RunAtLoad` on an agent means "when Lea logs in".
-     That is deliberate: the executor places real orders and enforces the only
-     stop-loss this system has, and it should not begin doing that while you
-     are asleep and unable to notice it misbehaving. Trading starts when you
-     are present to see it start.
+  2. **Nobody is watching.** `RunAtLoad` on an agent means "when I log in".
+     The executor places real orders and enforces the only stop-loss this
+     system has, and it should not begin doing that while I am asleep and
+     unable to notice it misbehaving. Trading starts when I am there to see it.
 
 KeepAlive
 =========
@@ -23,10 +22,10 @@ KeepAlive
     KeepAlive = { SuccessfulExit = false }
 
 meaning: restart if it exits NON-zero, leave it alone if it exits zero. The
-supervisor already treats a clean exit as "you stopped it on purpose" and does
+supervisor already treats a clean exit as "I stopped it on purpose" and does
 not restart; this makes launchd agree. Without the `SuccessfulExit` key,
-`KeepAlive = true` would restart the process every time you deliberately
-stopped it, and you would end up fighting your own machine.
+`KeepAlive = true` would restart the process every time I
+stopped it on purpose.
 
 LOG ROTATION
 ============
@@ -39,7 +38,7 @@ empty forever.
 So rotation here is copy-then-truncate: the content is copied to `.1`, and the
 original is truncated **in place**, preserving the inode and launchd's file
 handle. It is driven from the executor loop rather than from here, because the
-loop ticks every 60 seconds and this module only runs when you invoke it.
+loop ticks every 60 seconds and this module only runs when I invoke it.
 """
 
 from __future__ import annotations
@@ -78,7 +77,7 @@ def log_dir(home: Optional[Path] = None) -> Path:
 
 
 def python_executable() -> str:
-    """The venv interpreter if there is one, else whatever is running us.
+    """The venv interpreter if there is one, else the one running this.
 
     launchd starts with a minimal environment and no shell, so `python` alone
     would find the system interpreter and none of the dependencies.
@@ -255,5 +254,5 @@ def rotate_logs(directory: Optional[Path] = None,
                 fh.truncate(0)
             rotated.append(log)
         except OSError:
-            continue          # a log we cannot rotate must not stop the executor
+            continue          # a log that cannot be rotated must not stop the executor
     return rotated

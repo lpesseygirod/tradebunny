@@ -1,29 +1,24 @@
 """The quant desk: the numbers the council argues about, computed by code.
 
-Members used to find growth, margins, debt and "cheap against its own
-history" on the web, which is where mistakes creep in. Here code computes
-them from Yahoo Finance's statements and five years of weekly prices, so
-the members argue about the numbers instead of hunting for them.
+Members used to look these up on the web, which is where mistakes crept in.
+Now they come from Yahoo Finance statements and five years of weekly prices.
 
 Per stock
-  prices        1-year volatility, beta and correlation against the
-                benchmark (2 years of weekly returns), worst fall over 3
-                years, 12-1 month momentum, 1-year return
-  fundamentals  revenue growth (CAGR over the years reported), operating
-                and free-cash-flow margins, net debt to EBITDA, return on
-                invested capital (approximate)
-  valuation     P/E at each year end against today's, the 5-year average,
-                and a reverse DCF: the 10-year free-cash-flow growth the
-                price implies at a 9% discount rate and 2.5% terminal growth
+  prices        1-year volatility, beta and correlation vs the benchmark
+                (2 years of weekly returns), worst fall over 3 years,
+                12-1 month momentum, 1-year return
+  fundamentals  revenue CAGR, operating and FCF margins, net debt to
+                EBITDA, approximate ROIC
+  valuation     P/E at each year end vs today's and the 5-year average,
+                and a reverse DCF (9% discount, 2.5% terminal growth)
 Per portfolio
-  volatility, a historical 1-month value at risk (95%), and how correlated a
-  candidate is with what we already own
+  volatility, historical 1-month VaR (95%), correlation of a candidate
+  with what I already own
 
-Every figure says where it came from. The approximations are labelled: the
-historical P/E uses today's share count; returns are in the listing
-currency, so they ignore euro moves.
+Approximations: historical P/E uses today's share count; returns are in
+the listing currency, so they ignore euro moves.
 
-Offline (tests, the demo) the desk reads a saved file of real numbers.
+Offline (tests, demo) the desk reads a saved file of real numbers.
 """
 
 from __future__ import annotations

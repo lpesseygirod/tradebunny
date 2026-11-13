@@ -1,9 +1,9 @@
 """Execution quality — the signal at small capital, where P&L is noise.
 
 At 50 EUR a grid's profit and loss is a rounding error dressed up as evidence.
-Two cycles either way swamps it, and a month of it tells you nothing about
-whether the strategy works. What that month CAN tell you, and what nothing else
-will, is whether the machinery works:
+Two cycles either way swamps it, and a month of it says nothing about
+whether the strategy works. What that month CAN show, and nothing else will,
+is whether the machinery works:
 
     fill rate       do resting orders actually fill, or sit at the back of a
                     queue while price passes through?

@@ -1,6 +1,6 @@
 """The selection rubric — what the analyst checks before proposing a grid.
 
-Two layers, deliberately separated:
+Two layers, kept separate:
 
   GATES   hard disqualifiers. Any single failure and the asset is not a candidate,
           regardless of how good everything else looks. No score can override a gate.
@@ -9,7 +9,7 @@ Two layers, deliberately separated:
 
 The gates come first because grid trading's failure mode is not "mediocre returns",
 it is ruin: a trending market makes a grid accumulate losing positions until the
-capital is gone. Ranking cannot protect you from that — only refusing to trade can.
+capital is gone. Ranking cannot protect against that; only refusing to trade can.
 
 Thresholds below are sourced, not invented. Where the literature gives a number
 (ADX 25, Hurst 0.45) it is used directly; where it gives only direction, the value
@@ -182,7 +182,7 @@ def assess(
     a.adf_pvalue = adf.pvalue if adf else None
 
     # Hurst WITH an interval. The point estimate alone cannot distinguish
-    # "reverting" from "we cannot tell".
+    # "reverting" from "I cannot tell".
     hci = metrics.hurst_ci(closes, n_boot=t.hurst_boots)
 
     # Did the property hold throughout, or only on average?
@@ -277,7 +277,7 @@ def assess(
         a.measured["short_efficiency_ratio"] = s_er
         a.measured["short_adf_p"] = s_adf.pvalue if s_adf else None
 
-        # NOTE: short_adx is RECORDED but NOT gated on, and that is a
+        # short_adx is RECORDED but NOT gated on, and that is a
         # measured fact rather than an oversight. ADX is Wilder-smoothed with
         # a decay of (13/14) per bar, so after ~1000 bars it has forgotten
         # everything older entirely: on LTC, ETH and XRP the 8760-bar and
@@ -302,7 +302,7 @@ def assess(
                 f"from, whatever the long window says")
 
     # --- gates ---------------------------------------------------------------
-    # A missing statistic is a failure, not a pass. We do not trade on absent data.
+    # A missing statistic is a failure, not a pass. I do not trade on absent data.
     #
     # PRIMARY: the Augmented Dickey-Fuller test. This is the only gate here
     # that tests a hypothesis rather than compares a descriptive number to a
@@ -374,7 +374,7 @@ def assess(
             f"efficiency ratio {er:.3f} > {t.max_efficiency} — price is travelling, "
             f"not oscillating")
 
-    # Variance ratio is deliberately NOT a gate — it is horizon-dependent, and a
+    # Variance ratio is NOT a gate — it is horizon-dependent, and a
     # genuine oscillation reads as trending when measured inside its own cycle.
     # It informs the notes instead. See metrics.variance_ratio for the numbers.
 
@@ -420,7 +420,7 @@ def assess(
 
     # The Hurst diagnostic is attached BEFORE the early return, so a rejected
     # candidate still carries it. Comparing what ADF rejected against what
-    # Hurst would have rejected is the whole point of keeping it.
+    # Hurst would have rejected is why it is kept.
     for why in a.hurst_would_reject:
         a.notes.append(f"Hurst diagnostic (NOT a gate): {why}")
 
@@ -496,8 +496,8 @@ def rank(assessments: Sequence[Assessment], top: int = 3) -> list[Assessment]:
 # DOCUMENTATION ONLY. This was the system prompt for a model call in analyst.py.
 # That call is gone — TradeBunny has no AI at runtime — and nothing sends this
 # anywhere. It is kept because it is the clearest single statement of what the
-# gates below are for and why each one exists. If you change a threshold in
-# `Thresholds`, change the matching sentence here too.
+# gates below are for and why each one exists. A threshold changed in
+# `Thresholds` needs the matching sentence changed here too.
 ANALYST_BRIEF = """\
 You are selecting instruments for a SPOT grid trading bot. You are not predicting
 direction — a grid does not care which way price goes, only that it oscillates.

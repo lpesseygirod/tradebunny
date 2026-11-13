@@ -175,7 +175,7 @@ class TestEvents:
         assert [e.title for e in db.events(unread_only=True)] == ["b"]
 
     def test_there_is_no_delete(self, db):
-        """This is the record of what the system told you."""
+        """This is the record of what the system told me."""
         assert not hasattr(db, "delete_event")
 
 

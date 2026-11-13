@@ -1,4 +1,4 @@
-"""The council's interface, following the "TradeBunny web design" mock-ups.
+"""The council's web interface, following my design mock-ups.
 
     /                 Money: are we beating the index? convene, rules, watch list
     /meetings/<id>    Meeting: one debate, round by round, live while it runs
@@ -8,8 +8,8 @@
     /research/<id>    one research file
     /rules            Rules: what can't happen?
 
-Binds to 127.0.0.1. If COUNCIL_WEB_TOKEN is set, every action (convening a
-meeting, running the review) needs it; open the page once with ?token=...
+Binds to 127.0.0.1. If COUNCIL_WEB_TOKEN is set, every POST action needs it:
+open the page once with ?token=...
 """
 
 from __future__ import annotations
@@ -427,8 +427,8 @@ def create_app(store: Optional[Store] = None, steward: Optional[Steward] = None,
         return redirect(url_for("meetings"))
 
     def busy_label() -> str:
-        """What is running in the background; a flag older than 30 minutes is
-        from a server that stopped mid-run, so it no longer blocks."""
+        """What's running in the background. A flag older than 30 minutes is
+        from a server that died mid-run, so it's ignored."""
         b = store.get_meta("busy") or {}
         if not isinstance(b, dict) or not b.get("at"):
             return ""
@@ -546,7 +546,7 @@ def create_app(store: Optional[Store] = None, steward: Optional[Steward] = None,
 
 
 def create_books(steward: Optional[Steward] = None, **kw) -> Flask:
-    """All three books in one app: yours at /, the Autopilot at /autopilot/,
+    """All three books in one app: mine at /, Autopilot at /autopilot/,
     and the rules-only comparison at /rules-only/."""
     from werkzeug.middleware.dispatcher import DispatcherMiddleware
     os.environ.setdefault("COUNCIL_SECRET", os.urandom(24).hex())   # one session for all

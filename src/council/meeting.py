@@ -11,10 +11,10 @@
     vote        every member votes buy, wait or no, with one reason
     verdict     the CIO decides and answers every member who voted otherwise
     risk        code: the risk engine sizes the verdict or blocks it
-    approval    a proposal that waits for YOU; nothing trades until you say yes
+    approval    becomes a proposal; nothing trades until I approve it
 
-Every step is written to the store the moment it exists, so the interface
-shows the debate as it happens and keeps it afterwards exactly as it was.
+Every step is saved to the store as soon as it exists, so the interface shows
+the debate live and keeps it exactly as it was.
 """
 
 from __future__ import annotations
@@ -388,10 +388,10 @@ class Meeting:
         return mid
 
     def two_verdicts(self, mid: int, prompt: str, ctx: dict):
-        """The CIO decides. Only if that verdict would trade (buy, add, trim,
-        sell) does a second, independent CIO decide too; if the second would
-        not trade, the council does not. A verdict that flips on a second
-        reading is not confident enough to trade on. No trade, no second call."""
+        """The CIO decides. Only if that verdict would trade does a second,
+        independent CIO decide too; if the second would not trade, neither
+        does the council. A verdict that flips on a second reading is not
+        confident enough to trade on."""
         a = self._ask(mid, "cio", "cio", prompt, agents.CIODecision, ctx)
         if self.backend.name == "scripted" or not coded.acts(a.output.decision):
             return a

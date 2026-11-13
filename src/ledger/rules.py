@@ -1,8 +1,7 @@
 """The validation gate. Every candidate the AI produces passes through here.
 
-This module is where the discipline lives. It is intentionally strict: it is much
-better to record two good predictions a week than ten sloppy ones, because the
-sloppy ones poison the scorecard and you learn nothing.
+It is strict on purpose: two good predictions a week are worth more than ten
+sloppy ones, because the sloppy ones poison the scorecard and teach nothing.
 """
 
 from __future__ import annotations
@@ -143,7 +142,7 @@ def lock_time(now: datetime, hour_utc: int = 20) -> datetime:
 def resolves_on(now: datetime, horizon_days: int) -> str:
     """Approximate calendar date for a horizon given in trading days.
 
-    Deliberately crude — five trading days is about seven calendar days. The
+    Crude on purpose: five trading days is about seven calendar days. The
     resolver checks that real price bars exist before scoring, so a date landing
     on a holiday costs nothing.
     """

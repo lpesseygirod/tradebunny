@@ -3,16 +3,16 @@
 WHAT A MARKOUT IS
 =================
 
-A fill looks identical whether it was a gift or a mistake. Markout is how you
-tell: take the mid price some interval after the fill, and ask whether the
-market moved toward you or away.
+A fill looks identical whether it was a gift or a mistake. Markout tells them
+apart: take the mid price some interval after the fill, and ask whether the
+market moved toward the fill or away from it.
 
     buy  markout(h) = (mid(t+h) - fill_price) / fill_price
     sell markout(h) = (fill_price - mid(t+h)) / fill_price
 
 Sign-adjusted, so POSITIVE always means the fill was favourable regardless of
-side. A consistently negative markout means you are being adversely selected —
-the counterparty knew something, or your quote was stale, and the spread you
+side. A consistently negative markout means the grid is being adversely selected —
+the counterparty knew something, or the quote was stale, and the spread
 collected did not pay for it.
 
 WHY SEGMENT BY TIME-TO-FILL
@@ -21,25 +21,25 @@ WHY SEGMENT BY TIME-TO-FILL
 The practitioner claim this instrumentation exists to test is that FAST fills
 are toxic and SLOW fills are favourable. The mechanism is intuitive: an order
 that fills within seconds of being placed was probably picked off by someone
-reacting to news your quote had not yet incorporated, while an order that
-rested for an hour was filled by someone who wanted liquidity and paid you the
+reacting to news the quote had not yet incorporated, while an order that
+rested for an hour was filled by someone who wanted liquidity and paid the
 spread for it.
 
 If that is true, a wide-spaced grid should sit firmly in the favourable regime,
 because its orders rest for a long time by construction. That is a prediction
-about YOUR pairs and it is measurable, so this module measures it rather than
+about MY pairs and it is measurable, so this module measures it rather than
 assuming it.
 
 WHAT CAN AND CANNOT BE MEASURED HERE
 ====================================
 
-The horizons asked for are +1s, +10s, +1m, +5m, +30m. On HOURLY candles, the
+The horizons I want are +1s, +10s, +1m, +5m, +30m. On HOURLY candles, the
 first four are not observable at all — there is no price between one bar and
 the next, and interpolating one would be inventing the measurement. Those
 horizons are reported as absent rather than filled in, and become measurable
 only against a live feed or sub-minute candles.
 
-At hourly resolution the honest horizons are +1h, +4h, +24h, and those are
+At hourly resolution the measurable horizons are +1h, +4h, +24h, and those are
 included alongside. A markout curve with holes in it is more useful than a
 smooth one that is partly fabricated.
 """
@@ -50,7 +50,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
-#: The horizons in the brief, plus the ones hourly candles can actually see.
+#: The horizons I want, plus the ones hourly candles can actually see.
 HORIZONS: dict[str, float] = {
     "+1s": 1.0,
     "+10s": 10.0,
@@ -170,7 +170,7 @@ def curves(markouts: Sequence[Markout]) -> list[Curve]:
 
 
 def report(markouts: Sequence[Markout]) -> str:
-    """The curve, and an honest verdict on the fast-is-toxic claim."""
+    """The curve, and a verdict on the fast-is-toxic claim."""
     if not markouts:
         return ("no fills to measure. Markout needs fills, and a grid that has "
                 "not traded has nothing to say about execution quality.")

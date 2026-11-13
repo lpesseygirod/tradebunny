@@ -1,17 +1,15 @@
-"""The parts of a meeting that code does better than an AI, or as well.
+"""Meeting steps that code does as well as an AI, for free and repeatably.
 
-The AI is used only where reading and judgement are needed: research, the
-thesis, the debate, the fact check and the verdict. These two steps are
-plain arithmetic on numbers the code already has, so they cost nothing and
-give the same answer every time:
+The AI is only used for reading and judgement (research, thesis, debate,
+fact check, verdict). These two steps are plain arithmetic on numbers the
+code already has:
 
-  risk officer   which holdings are the same bet (correlation of weekly
-                 returns, the AI and Taiwan flags) and what each world does
-                 to the stock, scaled by its beta, then to the portfolio at
-                 the size the rules allow
-  the vote       each member's position after the debate, read from what
-                 they wrote: their stance, what the thesis analyst conceded,
-                 what the valuation analyst said about the price
+  risk officer   which holdings are the same bet (weekly-return correlation,
+                 AI and Taiwan flags) and what each scenario does to the
+                 stock (scaled by beta) and to the portfolio at the allowed size
+  the vote       each member's position after the debate, read from what they
+                 wrote: stance, what the thesis analyst conceded, what the
+                 valuation analyst said about the price
 """
 
 from __future__ import annotations
@@ -56,7 +54,7 @@ def same_bets(desk: quant.Desk, ticker: str, holdings: list[dict], m) -> list[st
 
 def risk_memo(f: dict, desk: quant.Desk, m, size: float) -> RiskMemo:
     """The risk officer's memo, computed. `size` is the portfolio weight it
-    would have (what is held or planned, or the minimum position)."""
+    would have (held, planned, or the minimum position)."""
     q = f.get("quant") or {}
     b = q.get("beta") if q.get("beta") is not None else 1.0
     b = max(0.3, min(b, 2.5))

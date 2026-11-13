@@ -473,8 +473,8 @@ def limits(book: Optional[risk.Book], m: Mandate, store: Store) -> list[dict]:
     rows = []
 
     def status(ratio: float) -> str:
-        # At the cap is "close", not "over": weights are floats, and a position
-        # sized exactly to its cap must not read as a breach.
+        # At the cap is "close", not "over": float weights sized exactly
+        # to the cap shouldn't read as a breach.
         return "over" if ratio > 1.0005 else "close" if ratio >= 0.8 else "ok"
 
     def row(name, sub, rule, fill, now, st=None):

@@ -2,11 +2,11 @@
 
 Telegram is used rather than email because it supports inline buttons: the morning
 report arrives with Bought/Skip attached to each prediction, so a decision is one tap
-on your phone with no app to open. That matters — a decision mechanism you skip
-because it is inconvenient produces a journal full of unmarked entries.
+on my phone with no app to open. If deciding is inconvenient I skip it, and the
+journal fills with unmarked entries.
 
-Setup: message @BotFather, /newbot, take the token. Then message your new bot once
-and read your chat id from https://api.telegram.org/bot<TOKEN>/getUpdates
+Setup: message @BotFather, /newbot, take the token. Then message the new bot once
+and read the chat id from https://api.telegram.org/bot<TOKEN>/getUpdates
 """
 
 from __future__ import annotations

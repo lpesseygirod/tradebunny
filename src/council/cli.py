@@ -8,10 +8,10 @@
     python -m council.cli research TICKER   write a research file (stage 2)
     python -m council.cli watch         earnings and big drops on what we own (stage 5)
     python -m council.cli portfolio-meeting   the monthly look at the whole book
-    python -m council.cli proposals     what is waiting for your OK
+    python -m council.cli proposals     what is waiting for my OK
     python -m council.cli approve ID    approve a proposal: re-check the rules, then trade
     python -m council.cli reject ID     reject it: nothing is traded
-    python -m council.cli review        tranches you approved, triggers, today's value
+    python -m council.cli review        approved tranches, triggers, today's value
     python -m council.cli daily         review + scan: what the scheduled job runs
     python -m council.cli schedule ...  install | remove | status: the daily job
     python -m council.cli scorecard     is the council any good? past calls vs the index
@@ -19,12 +19,11 @@
     python -m council.cli web           the interface on http://127.0.0.1:8090
     python -m council.cli demo          offline demo in a throwaway folder
 
-Every command takes --book autopilot to act on the second book, where the
+Every command takes --book autopilot (or rules) to act on a book where the
 council approves its own proposals (paper money only).
 
-Meetings use the Claude API when ANTHROPIC_API_KEY is set (in the shell or
-in .env in the project), and scripted members otherwise. COUNCIL_OFFLINE=1
-uses the saved price snapshot.
+Meetings use the Claude API when ANTHROPIC_API_KEY is set (shell or .env),
+scripted members otherwise. COUNCIL_OFFLINE=1 uses the saved price snapshot.
 """
 
 from __future__ import annotations

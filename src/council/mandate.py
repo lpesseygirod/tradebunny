@@ -1,8 +1,8 @@
 """The mandate: the rulebook every other part of the council reads.
 
-Loaded strictly. An unknown key, a missing limit or weights that add up to
-more than 100% raise, so a typo in the YAML stops the council instead of
-silently loosening a limit. Only the principal edits the file.
+Loaded strictly: an unknown key, a missing limit or weights over 100% raise,
+so a typo in the YAML stops the council instead of quietly loosening a limit.
+Only I edit this file.
 """
 
 from __future__ import annotations
@@ -127,17 +127,17 @@ class Mandate(Strict):
     fee_per_order_eur: float = Field(ge=0)
     broker: BrokerConfig = BrokerConfig()
     # Autopilot: the council approves its own proposals. The risk engine still
-    # re-checks every rule; only your approval step is skipped. Paper only.
+    # re-checks every rule; only my approval is skipped. Paper only.
     autopilot: bool = False
-    # Rules only: the comparison book. No AI at all: members restate the
-    # committee's notes and code applies the triggers. It approves itself.
+    # Rules only: the no-AI comparison book. Members restate the committee's
+    # notes and code applies the triggers. Approves itself.
     rules_only: bool = False
     limits: Limits
     instruments: list[Instrument]
     watchlist: list[WatchItem] = []
     rejected: list[Rejected] = []
-    # The scout's shortlist, read from the store each time: names a research
-    # file sent to the committee. Not part of the YAML; see `use_shortlist`.
+    # The scout's shortlist (names a research file sent to the committee), read
+    # from the store each time. Not in the YAML; see `use_shortlist`.
     _shortlist: Optional[Callable[[], list[WatchItem]]] = PrivateAttr(default=None)
 
     @model_validator(mode="after")
@@ -163,9 +163,9 @@ class Mandate(Strict):
     # ------------------------------------------------------------- lookups
 
     def use_shortlist(self, provider: Callable[[], list[WatchItem]]) -> "Mandate":
-        """Let the scout's shortlisted names into the universe. They are
-        debated like watch-list names; every buy still passes the risk engine
-        and waits for your OK."""
+        """Add the scout's shortlisted names to the universe. They are debated
+        like watch-list names; every buy still passes the risk engine and
+        waits for my OK."""
         self._shortlist = provider
         return self
 
@@ -233,7 +233,7 @@ def load(path: Optional[Path] = None) -> Mandate:
 
 def initialise(overwrite: bool = False, book: str = "") -> Path:
     """Copy the example to the private, git-ignored mandate file. The Autopilot
-    book gets the same rules with `autopilot: true`."""
+    and Rules books get the same rules plus their own flags."""
     book = book or paths.book()
     target = paths.mandate_path(book)
     if overwrite or not target.exists():

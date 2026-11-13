@@ -1,6 +1,6 @@
 """Pure scoring functions. No I/O, no clock, no network — so they can be tested.
 
-The whole project rests on these being right, so they are deliberately boring.
+The whole project rests on these being right, so I kept them boring.
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ def excess_return(
 def brier_score(confidences: Sequence[float], hits: Sequence[bool]) -> Optional[float]:
     """Mean squared error of the confidence forecasts. Lower is better.
 
-    0.25 is what you get by always saying 50%, so anything at or above 0.25 means
+    0.25 is the score for always saying 50%, so anything at or above 0.25 means
     the confidence numbers carry no information. This converges much faster than
     return metrics, which makes it the most useful early signal.
     """
@@ -87,7 +87,7 @@ def calibration_buckets(
 ) -> list[dict]:
     """Group predictions by stated confidence and report the realised hit rate.
 
-    This is what tells you whether "70% confident" actually means anything.
+    This shows whether "70% confident" actually means anything.
     """
     if len(confidences) != len(hits):
         raise ValueError("confidences and hits must be the same length")
@@ -138,9 +138,9 @@ class Scorecard:
 
     @property
     def filter_value(self) -> Optional[float]:
-        """How much the owner's own bought/skipped judgement added, in pct points.
+        """How much my own bought/skipped judgement added, in pct points.
 
-        Positive means their instinct helped. Negative means it cost them.
+        Positive means my instinct helped. Negative means it cost me.
         """
         if self.taken_mean_net_excess is None or self.mean_net_excess is None:
             return None
@@ -187,7 +187,7 @@ def sample_size_warning(n: int) -> Optional[str]:
     """Return a warning while the sample is too small to mean anything.
 
     Financial returns are noisy enough that a few dozen predictions cannot
-    distinguish skill from luck. This exists so the recap never lets you forget it.
+    distinguish skill from luck. This keeps that in the recap so I don't forget it.
     """
     if n < 30:
         return f"{n} resolved — far too few to conclude anything. Keep collecting."

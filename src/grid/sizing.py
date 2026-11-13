@@ -3,7 +3,7 @@
 Four separate limits decide a position size, and the useful output is not the
 number but which one bound. A size held down by the concurrency cap means "add
 capital or run fewer grids"; the same number held down by negative Kelly means
-"do not take this trade at all". They look identical if you only print the total.
+"do not take this trade at all". They look identical if only the total is printed.
 
     kelly           what the edge justifies, if the edge estimate is right
     risk            what a stop-out may cost, from analyst.size_grid
@@ -13,8 +13,8 @@ capital or run fewer grids"; the same number held down by negative Kelly means
 and beneath all of them a FLOOR: the minimum the exchange will actually accept.
 A size under that is not a small position, it is a rejected order.
 
-ON KELLY, HONESTLY
-==================
+ON KELLY
+========
 
 Kelly maximises long-run log wealth GIVEN that the win rate, the win size and
 the loss size are known exactly. None of the three is known here. `p` is a
@@ -38,7 +38,7 @@ this win rate and this payoff, betting anything loses money in the long run,
 and the mathematically correct size is zero.
 
 The candidate is still SHOWN, because taking it off the page would be deciding
-for the owner rather than informing them — and because `p` here is an
+for me rather than informing me — and because `p` here is an
 uncalibrated confidence score, so a negative `f` is itself an estimate. What
 must not happen is a positive number appearing without the reason: so
 `kelly_full` keeps its negative sign, `negative_kelly` is set, and
@@ -94,7 +94,7 @@ def kelly_fraction(win_pct: float, loss_pct: float, p: float) -> float:
                          "is not a bet, and Kelly divides by this")
     if win_pct <= 0:
         # No upside: the bet is pure loss and Kelly's answer is "less than
-        # nothing". Return the honest negative rather than raising, so callers
+        # nothing". Return the negative rather than raising, so callers
         # display the warning instead of crashing.
         return -1.0
     if not 0.0 <= p <= 1.0:
@@ -227,12 +227,12 @@ def recommend(*, available_quote: float, risk_size: float, kelly_full: float,
               min_capital: float, loss_fraction: float) -> SizeRecommendation:
     """Combine every limit and report which one bound.
 
-    KELLY IS A FRACTION AT RISK, NOT AN AMOUNT DEPLOYED. This distinction was
-    wrong here and cost a factor of ten.
+    KELLY IS A FRACTION AT RISK, NOT AN AMOUNT DEPLOYED. I had this wrong at
+    first and it cost a factor of ten.
 
-    In a classic bet, losing means losing the whole stake, so "risk f* of your
-    bankroll" and "stake f* of your bankroll" are the same instruction. A grid
-    is not that bet: when the stop fires you lose `loss_fraction` of what is
+    In a classic bet, losing means losing the whole stake, so "risk f* of the
+    bankroll" and "stake f* of the bankroll" are the same instruction. A grid
+    is not that bet: when the stop fires it loses `loss_fraction` of what is
     deployed — about 10% — not all of it. So deploying `f* x capital` puts only
     `f* x loss_fraction x capital` at risk, which at a 10% stop distance is a
     tenth of the intended bet.
@@ -275,8 +275,8 @@ def recommend(*, available_quote: float, risk_size: float, kelly_full: float,
     recommended = constraints[binding]
     if negative:
         # NOT zeroed. A negative Kelly is a loud warning, not a silent
-        # rejection: the owner asked to still see these, correctly, because
-        # "the arithmetic says don't" is information they should weigh rather
+        # rejection: I still want to see these, because
+        # "the arithmetic says don't" is information I should weigh rather
         # than have taken away. The other constraints still cap the number, and
         # `negative_kelly` drives the label.
         binding = f"{binding} (Kelly negative — see warning)"

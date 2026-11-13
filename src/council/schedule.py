@@ -2,10 +2,10 @@
 
 `council schedule install` writes ~/Library/LaunchAgents/com.tradebunny.council.plist
 and loads it: every evening at 22:15 (after the US close) it runs
-`council daily`. That buys tranches you already approved, records the day's
-value, and lets the council meet on its agenda. Every new trade it proposes
-still waits for your OK. If the Mac is asleep at 22:15, launchd runs the job
-when it wakes. Logs go to data/council/logs/daily.log.
+`council daily`, which buys tranches I already approved, records the day's
+value and lets the council meet. New trades still wait for my OK. If the
+Mac is asleep at 22:15, launchd runs the job when it wakes.
+Logs go to data/council/logs/daily.log.
 """
 
 from __future__ import annotations

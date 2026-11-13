@@ -433,7 +433,7 @@ class TestACleanStopIsAlsoDown:
         b = Heartbeat(stopped_cleanly=True)
         b.updated_at = cli.datetime.now(cli.timezone.utc).isoformat(timespec="seconds")
         assert b.is_stale() is False      # fresh by age
-        assert b.is_down() is True        # but we know it exited
+        assert b.is_down() is True        # but it is known to have exited
 
     def test_a_running_executor_is_not_down(self):
         b = Heartbeat()
@@ -528,7 +528,7 @@ class TestDriftCheckInTheLoop:
         assert "at approval" in sent[0] and "->" in sent[0]
 
     def test_it_does_not_stop_the_grid(self, control, dirs):
-        """Stopping is the owner's decision — same rule as halt_all."""
+        """Stopping is my decision — same rule as halt_all."""
         p = self._plan(dirs["plans_dir"])
         cli.check_drift(control, plans_dir=dirs["plans_dir"],
                         source=self._trending_source(SYMBOL),

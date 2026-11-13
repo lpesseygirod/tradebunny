@@ -1,7 +1,7 @@
 """Tests for the plan contract and the kill switches.
 
 The control tests matter more than they look: a kill switch that fails open is
-worse than no kill switch, because you believe you have stopped and you have not.
+worse than no kill switch, because I believe I have stopped and I have not.
 """
 
 import json
@@ -138,7 +138,7 @@ class TestLifecycle:
 
     def test_stop_cannot_revive_a_rejected_plan(self):
         """stop() accepted any Status, so p.reject(); p.stop(Status.RUNNING)
-        left a plan you explicitly refused in a live state."""
+        left a plan I explicitly refused in a live state."""
         p = plan().reject()
         with pytest.raises(ValueError):
             p.stop(Status.RUNNING)
@@ -208,7 +208,7 @@ class TestFailClosed:
 
     def test_a_missing_control_file_halts(self, tmp_path):
         """It used to return enabled defaults. A process started from the wrong
-        directory would then trade happily while you believed it was stopped."""
+        directory would then trade happily while I believed it was stopped."""
         c = Control(tmp_path / "nowhere" / "control.json")
         allowed, reason = c.may_trade("BTC-USDT")
         assert not allowed and "no control file" in reason

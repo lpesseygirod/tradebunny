@@ -1,13 +1,11 @@
 """The paper portfolio: real prices, real fees, no real money.
 
-It starts from the committee report's model portfolio with a notional
-capital, bought in three tranches a month apart (the report's entry plan),
-and is valued every day against the benchmark: the same money put into the
-MSCI World ETF on the first day. Beating that line, after fees, is the only
-honest definition of the council making money.
+It starts from the committee report's model portfolio, bought in three
+tranches a month apart, and is valued daily against the benchmark: the same
+money put into the MSCI World ETF on day one. Beating that after fees is
+the only honest measure of whether the council makes money.
 
-Orders are limit orders at the last price. On paper that fills immediately;
-the price, the euro amount and the flat fee are all recorded.
+Orders are limit orders at the last price, so on paper they fill at once.
 """
 
 from __future__ import annotations
@@ -203,7 +201,7 @@ class Portfolio:
         return {"value_eur": value, "benchmark_eur": bench}
 
     def review(self, on: Optional[str] = None) -> list[str]:
-        """Housekeeping: tranches you already approved, triggers, today's value."""
+        """Housekeeping: tranches I already approved, triggers, today's value."""
         on = on or today()
         events: list[str] = []
         for tr in self.store.tranches("planned"):

@@ -83,7 +83,7 @@ nothing.
 ADF dominates: on these windows most pairs cannot reject a random walk
 at all, which is the primary evidence the whole strategy rests on.
 
-## What this run does not tell you
+## What this run does not show
 
 - **Windows differ per pair** — see above. This is the most important
   caveat in the file.
@@ -193,7 +193,7 @@ OLD: mean band width 190.5% of lower, mean levels 152
 
 NEW: mean band width 26.9% of lower, mean levels 34
 
-## Reading this honestly
+## Reading these numbers
 
 **The corrected numbers are worse, and that is the point.** Mean return goes
 from +0.61% to −0.39%. The old figure was not a better result, it was a
@@ -209,7 +209,7 @@ pairs show exactly that: zero cycles *and* zero peak inventory.
 
 This is a real limitation of the experiment, not of the split. A 45-day band
 is designed to be re-fitted; scoring it over 104 days without re-fitting
-measures the wrong thing. **The honest reading is that neither column is a
+measures the wrong thing. **The fair reading is that neither column is a
 forecast of live performance** — the old one flattered by trading a band
 nobody would deploy, the new one penalises by refusing to re-deploy a band
 that has expired.
@@ -366,7 +366,7 @@ is what insurance looks like.
   stopped out **23 → 65**. Trading these pairs in this regime loses money, and
   the single-fit figure was mostly a grid doing nothing.
 
-The honest summary is that the previous −0.39% was not a better result, it was
+In short, the previous −0.39% was not a better result, it was
 a quieter one. Removing the stale-band artefact removed the flattery with it.
 
 **Bars outside the band does not go to zero** — 43.9% even with re-fitting. Half
@@ -605,7 +605,7 @@ The verdict survives that limitation: the retirement is driven by the realised
 column, which is worse for C in **both** windows actually tested, and that is a
 statement about its trading rather than about market direction.
 
-### Also worth recording: neither arm clears zero honestly
+### Also worth recording: neither arm clearly beats zero
 
 Baseline is negative in both windows. C's confidence intervals both **cross
 zero** ([−1.46%, +2.41%] and [−1.12%, +4.30%]), and dropping its best two pairs

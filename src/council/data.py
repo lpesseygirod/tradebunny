@@ -1,12 +1,12 @@
 """The data steward: every number the council uses, with its source and time.
 
-Agents never produce a price or a multiple. They may only cite the fact sheet
-this module builds, so an invented P/E has nowhere to come from. Every quote
-carries `source` and `as_of`, and `is_fresh` decides whether it is recent
-enough to trade on.
+Agents never produce a price or a multiple; they can only cite the fact sheet
+built from here, so an invented P/E has nowhere to come from. Every quote
+carries `source` and `as_of`, and `is_fresh` decides if it is recent enough
+to trade on.
 
 Two sources:
-  live      Yahoo Finance through `yfinance` (no key), cached for a few minutes
+  live      Yahoo Finance via `yfinance` (no key), cached for a few minutes
   snapshot  a saved file of real quotes, for tests and the offline demo
 """
 
@@ -185,7 +185,6 @@ class Steward:
         if missing and self.snapshot:
             raise DataError(f"not in the snapshot: {', '.join(missing)}")
         if missing:
-            # FX first, once, so the threads do not race for it.
             with ThreadPoolExecutor(max_workers=8) as ex:
                 results = list(ex.map(self._safe_fetch, missing))
             errors = []
@@ -200,11 +199,11 @@ class Steward:
         return out
 
     def news(self, ticker: str, limit: int = 8) -> list[dict]:
-        """Recent headlines from Yahoo Finance: title, source, date, link.
+        """Recent Yahoo Finance headlines: title, source, date, link.
 
-        Headlines are other people's words: shown as data and given to the
-        council as data, never as instructions. Empty offline or on error,
-        so a missing feed never stops a page or a meeting.
+        Headlines are other people's words, used as data, never as
+        instructions. Empty offline or on error, so a missing feed never
+        stops a page or a meeting.
         """
         if self.snapshot:
             return []
@@ -231,7 +230,7 @@ class Steward:
 
     def earnings_dates(self, ticker: str) -> list[str]:
         """Recent and upcoming results dates (YYYY-MM-DD), newest first.
-        Empty offline or on error: a missing calendar never stops the run."""
+        Empty offline or on error."""
         if self.snapshot:
             return []
         try:

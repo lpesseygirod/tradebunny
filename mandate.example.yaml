@@ -1,8 +1,8 @@
 # TradeBunny investment council: the mandate.
 #
 # This file is the rulebook. The risk engine enforces every number in
-# `limits` in plain code; no agent can loosen them. Only the principal (you)
-# edits this file, at the quarterly review. `council init` copies it to
+# `limits` in plain code; no agent can loosen them. Only I edit this file,
+# at the quarterly review. `council init` copies it to
 # data/council/mandate.yaml, which git ignores: edit that copy.
 #
 # Sources: the TraderBunny Investment Committee Report (23 Sep 2026), the
@@ -19,7 +19,7 @@ fee_per_order_eur: 1.0         # Trade Republic flat fee
 # Where approved orders go. "paper" fills at the last real price. "ibkr" sends
 # limit orders to Interactive Brokers through IB Gateway on this Mac: start with
 # an IBKR paper account (port 4002). Real money also needs live: true and the
-# confirmation phrase. Nothing is ever ordered without your approval.
+# confirmation phrase. Nothing is ever ordered without my approval.
 broker:
   kind: paper
 
@@ -43,7 +43,7 @@ limits:
   meeting_budget_usd: 6.0      # stop a meeting that costs more than this
   monthly_ai_budget_usd: 30.0  # all AI use in a month; over it, the AI stages wait and the rules keep working
   watchlist_deadline: "2027-03-31"   # unused reserve moves to the index ETFs
-  proposal_days: 7             # a proposal you have not answered expires
+  proposal_days: 7             # a proposal I have not answered expires
   max_holding_reviews_per_month: 4
   review_holdings_every_days: 90     # each holding is re-examined about quarterly
   max_postmortems_per_month: 2       # "what went wrong?" reviews of past decisions

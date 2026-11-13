@@ -19,8 +19,8 @@ The rules below govern the LEDGER. The grid trader's rules are in `README.md`.
 
 ## What this is
 
-A **prediction journal** for market forecasts. It is NOT a trading bot and must not
-become one without an explicit decision by the owner. Twice a day it:
+A **prediction journal** for market forecasts. It is NOT a trading bot and will not
+become one unless I explicitly decide so. Twice a day it:
 
 1. (morning) gathers news and SEC filings, reasons about second-order effects,
    and writes falsifiable predictions to an append-only ledger,
@@ -53,7 +53,7 @@ pass or to get more signals per day.
 7. **Every prediction gets a random twin.** Same universe, same horizon, random
    ticker and direction. The twin is scored identically. If the real predictions do
    not beat their twins, there is no edge — this is the primary control.
-8. **Decisions lock.** The owner may mark bought/skipped until `lock_at`. After
+8. **Decisions lock.** I may mark bought/skipped until `lock_at`. After
    that the decision is frozen as `skipped`. No retroactive edits, ever.
 9. **Log the silence.** A run that produces no predictions writes a `run` row with
    `n_predictions = 0`. An empty day and a crashed scraper must be distinguishable.
@@ -95,7 +95,7 @@ no I/O: `now` is passed in as a parameter.
   - `https://efts.sec.gov/LATEST/search-index?q=...&forms=SC+13D` — full-text search
 - **Alpaca** paper keys work for market data. Base URL for data is
   `https://data.alpaca.markets`. Paper trading is `https://paper-api.alpaca.markets`.
-- Filing timeliness, which is why we prefer Form 4 and 13D over 13F:
+- Filing timeliness, which is why I prefer Form 4 and 13D over 13F:
   Form 4 = 2 business days · Schedule 13D = 5 business days ·
   13G passive = 5 business days · 13F = 45 days after quarter end (too stale to trade).
 

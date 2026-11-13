@@ -176,7 +176,7 @@ class TestCandleLimitGuard:
 
     def test_the_guard_runs_before_any_request(self, monkeypatch):
         """no_network is active: reaching requests.get here would raise a
-        different error than the ValueError we expect."""
+        different error than the expected ValueError."""
         with pytest.raises(ValueError):
             okx.get_candles("BTC-USDT", limit=9999)
 
@@ -349,7 +349,7 @@ class TestRateLimit:
         assert len(slept) == 1
         assert 0 < slept[0] <= okx.RATE_WINDOW
 
-    def test_the_documented_allowance_is_what_we_enforce(self):
+    def test_the_documented_allowance_is_enforced(self):
         assert (okx.RATE_LIMIT, okx.RATE_WINDOW) == (20, 2.0)
 
 

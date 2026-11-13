@@ -1,11 +1,11 @@
 """The control interface — one local Flask app, one file, no build step.
 
-This is the "you" in the diagram: the analyst proposes, the executor obeys, and
+This is the human step in the diagram: the analyst proposes, the executor obeys, and
 everything in between happens here. Nothing on this page trades. It approves,
 rejects and stops; the executor does the rest by reading what was written.
 
 WHERE THE STATE LIVES. Plans are JSON files under `data/plans/`, read and
-written through `plan.save()` / `plan.load_all()`. That is deliberately the same
+written through `plan.save()` / `plan.load_all()`. That is the same
 mechanism the executor uses — `plan.py` exists so state can be rebuilt from the
 plan plus the exchange after a crash, never from a process's memory. Control
 state is `data/control.json` via `control.Control`. There is no database here:
@@ -15,19 +15,19 @@ grids), and adding a second source of truth that the executor does not read
 would be the surest way to have the UI and the bot disagree about what is
 running.
 
-THE SCAN RUNS IN A THREAD. A full scan is 30-90 seconds — a candle fetch per
-symbol, then one AI call per survivor — so `POST /scan` starts a worker and
+THE SCAN RUNS IN A THREAD. A full scan is 30-90 seconds — mostly a candle fetch
+per symbol — so `POST /scan` starts a worker and
 returns immediately. The page polls `/scan/status` every 2s. One scan at a time;
 a second request while one is running is refused rather than queued. If the
 worker raises, the traceback's summary is stored and rendered on the page: a
-spinner that never resolves tells you nothing, and the most likely failures here
-(a 403 from OKX, a missing API key) are exactly the ones you need to read.
+spinner that never resolves says nothing, and the most likely failures here
+(a 403 from OKX, a missing API key) are exactly the ones I need to read.
 
 ACCESS. Bound to 0.0.0.0 so a phone on the same wifi can reach it, which makes
 the token mandatory rather than optional — this page can halt trading and commit
 capital. `GRID_WEB_TOKEN` must be set or the app refuses to start. Every POST
 carries the token as a form field as well, so a page on another site cannot make
-your browser act on your behalf using only the cookie.
+my browser act on my behalf using only the cookie.
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ from .plan import GridPlan, Status, load_all
 PLANS_DIR = Path(os.getenv("TRADEBUNNY_HOME", ".")).resolve() / "data" / "plans"
 
 #: Capital levels the paper grids are tracked against. Switching between them
-#: re-derives every figure from the SAME fills, so you can see what a given
+#: re-derives every figure from the SAME fills, so I can see what a given
 #: capital would have produced without running it.
 HYPOTHETICAL_SIZES = (50.0, 200.0, 500.0, 2000.0)
 
@@ -205,7 +205,7 @@ class ScanRunner:
                 if report.error:
                     self.state.error = report.error
         except Exception as e:
-            # Deliberately broad. Whatever went wrong, the owner needs to read
+            # Broad on purpose. Whatever went wrong, I need to read
             # it on the page rather than watch a spinner forever. The one-line
             # summary goes to the UI; the full traceback to the log.
             with self.lock:
@@ -666,13 +666,12 @@ def _running_card(p: GridPlan, token: str, halted: bool,
 
 
 def _heartbeat_banner(heartbeat_path: Path, running_grids: int) -> str:
-    """The loudest thing on the page, and deliberately so.
+    """The loudest thing on the page, on purpose.
 
     A stopped executor is not a paused system. `plan.stop_below` is enforced by
     `executor.run_once` and by nothing else — the exchange is holding limit
     orders and has never heard of the stop price. So while this banner is up,
-    every open grid is running without a stop-loss, and the honest way to say
-    that is to say it.
+    every open grid is running without a stop-loss.
     """
     beat = load_heartbeat(heartbeat_path)
     if beat is not None and not beat.is_down():
@@ -1118,7 +1117,7 @@ def create_app(control: Optional[Control] = None, *, source=okx, client=None,
 
     # A missing control file halts everything by design. That is right for the
     # executor, which must never invent permission to trade — but this is the
-    # interface whose job is to create it, so it does, deliberately and once.
+    # interface whose job is to create it, so it does, once.
     control.initialise()
     plans_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1139,7 +1138,7 @@ def create_app(control: Optional[Control] = None, *, source=okx, client=None,
         if request.endpoint == "static":
             return None
         # A POST must carry the token explicitly, not merely inherit the cookie.
-        # Otherwise any page you visit could make your browser halt your bot or
+        # Otherwise any page I visit could make my browser halt my bot or
         # approve a plan; the attacker cannot read the token, only send along a
         # cookie the browser attaches for them.
         if request.method == "POST":
@@ -1221,7 +1220,7 @@ def create_app(control: Optional[Control] = None, *, source=okx, client=None,
 
         problems = _resize(plan, amount, control, fees)
         if problems:
-            # Re-validated because the owner's amount is free text: it can make
+            # Re-validated because my amount is free text: it can make
             # a sound plan unfundable, or exceed the cap in control.json. An
             # approval that cannot execute is worse than a refusal.
             flash(f"{plan.symbol} not approved — " + "; ".join(problems), "error")
@@ -1304,7 +1303,7 @@ def _find(plans_dir: Path, plan_id: str) -> Optional[GridPlan]:
 
 def _resize(plan: GridPlan, amount: float, control: Control,
             fees: FeeModel) -> list[str]:
-    """Apply the owner's chosen amount. Returns problems; empty means fine."""
+    """Apply the amount I chose. Returns problems; empty means fine."""
     if amount <= 0:
         return ["amount must be positive"]
 

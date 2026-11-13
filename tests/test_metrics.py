@@ -423,8 +423,7 @@ class TestRollingStability:
         assert not st.is_stable()
 
     def test_the_regime_split_is_rejected(self):
-        """The fixture the brief asks for: the full-window average passes, the
-        sub-windows do not."""
+        """The full-window average passes, the sub-windows do not."""
         s = regime_split()
         full = metrics.hurst(s)
         st = metrics.rolling_stability(s, 100, metrics.hurst,

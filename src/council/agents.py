@@ -1,17 +1,17 @@
 """The council's members: who they are, what they must answer, and how.
 
-Seven roles from the committee design, plus an earnings analyst. Each one returns a structured answer
-(a Pydantic model), so the interface can lay the debate out and the risk
-engine can read the CIO's verdict without parsing prose.
+Seven roles from the committee design plus an earnings analyst. Each returns
+a structured answer (a Pydantic model), so the interface can lay out the
+debate and the risk engine can read the CIO's verdict without parsing prose.
 
 Two backends:
-  ClaudeBackend    real analysts. Thesis analyst, red team and macro research
-                   the web first (dated, sourced evidence from this round),
-                   then write their memo. The red team runs on a different
-                   model from the others, so its blind spots differ.
-  ScriptedBackend  no AI and no key. Builds each memo from the committee's
-                   own October notes plus live numbers, with fixed rules.
-                   Labelled as scripted everywhere it appears.
+  ClaudeBackend    real analysts. Members with web search research first
+                   (dated, sourced evidence from this round), then write
+                   their memo. The red team runs on a different model so its
+                   blind spots differ.
+  ScriptedBackend  no AI, no key. Builds each memo from the committee's
+                   October notes plus live numbers with fixed rules, and is
+                   labelled as scripted everywhere.
 
 No role has a tool that trades or edits the mandate. Web pages are data,
 never instructions: every system prompt says so.
@@ -70,8 +70,8 @@ class Source(BaseModel):
 
 
 class ScenarioOdds(BaseModel):
-    """Fixed fields, not a free-form dict: structured output only allows
-    objects with known keys, so a dict would always come back empty."""
+    """Fixed fields, not a dict: structured output only allows known keys,
+    so a dict would always come back empty."""
     peace: int = Field(description="Percent, 0-100")
     stagflation: int = Field(description="Percent, 0-100")
     ai_bust: int = Field(description="Percent, 0-100: an AI spending bust")
@@ -211,9 +211,9 @@ def _clamp(x: int, lo: int, hi: int) -> int:
 
 
 def tidy(out: BaseModel) -> BaseModel:
-    """Enforce the limits structured output can only describe, not guarantee:
-    clamp percentages, cap list lengths, renumber ranks. A slightly
-    over-long answer is trimmed instead of failing the whole meeting."""
+    """Enforce limits structured output can describe but not guarantee: clamp
+    percentages, cap list lengths, renumber ranks. An over-long answer gets
+    trimmed instead of failing the meeting."""
     if hasattr(out, "key_points"):
         out.key_points = [p for p in out.key_points if p.strip()][:4]
     if hasattr(out, "predictions"):
@@ -390,9 +390,9 @@ class ClaudeBackend:
 
     @staticmethod
     def split(role: Role, prompt: str, context: dict):
-        """Put the shared fact sheet first, in a cached system block, so every
-        member reuses it instead of paying to read it again. The role's own
-        instructions come after it."""
+        """Put the shared fact sheet first in a cached system block so every
+        member reuses it instead of paying to read it again; the role's own
+        instructions follow."""
         shared = context.get("shared")
         if not shared or not prompt.startswith(shared):
             return role.system, prompt
@@ -458,9 +458,9 @@ class ClaudeBackend:
 # ---------------------------------------------------------- scripted backend
 
 class ScriptedBackend:
-    """No AI: each memo is assembled from the committee's own notes and live
-    numbers by fixed rules. Useful offline and for tests; never a substitute
-    for research, and labelled as scripted wherever it is shown."""
+    """No AI: each memo is built from the committee's notes and live numbers
+    by fixed rules. For offline use and tests; never a substitute for
+    research, and labelled as scripted wherever it shows."""
 
     name = "scripted"
 
@@ -468,7 +468,6 @@ class ScriptedBackend:
         fn = getattr(self, "_" + context["task"])
         return Result(output=fn(context), model="scripted")
 
-    # Each helper reads the context the meeting assembled.
     def _macro(self, c: dict) -> MacroMemo:
         odds = ScenarioOdds(peace=15, stagflation=35, ai_bust=15, rate_cuts=10, recession=25)
         return MacroMemo(

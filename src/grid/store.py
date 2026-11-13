@@ -3,8 +3,8 @@
 WHY THIS EXISTS NOW AND DID NOT BEFORE
 ======================================
 
-Everything else on the grid side persists as JSON files, deliberately: a plan is
-a file you can read, edit and diff, and `plan.py` exists so the executor can
+Everything else on the grid side persists as JSON files: a plan is a file I
+can read, edit and diff, and `plan.py` exists so the executor can
 rebuild its state from the plan plus the exchange rather than from a database.
 That is still true and those files are unchanged.
 
@@ -12,8 +12,8 @@ But three of the interface's requirements are not file-shaped:
 
   - a bank-statement view of EVERY transaction, in order, with a running
     position and running P&L after each one;
-  - notifications that persist with unread state, so you can see what happened
-    while you were away;
+  - notifications that persist with unread state, so I can see what happened
+    while I was away;
   - the executor writing while the web process reads, continuously.
 
 Doing that with JSON means rewriting a whole file on every fill, which loses
@@ -29,7 +29,7 @@ happened. The running position and P&L are DERIVED at read time rather than
 stored, so they cannot drift out of agreement with the rows they summarise.
 
 `events` is never deleted either — it is the record of what the system told
-you. Marking one read sets a timestamp; nothing is removed.
+me. Marking one read sets a timestamp; nothing is removed.
 
 WHAT THIS IS NOT
 ================
@@ -201,7 +201,7 @@ class Store:
 
         The running figures are computed forwards from the first row, then the
         list is reversed if asked for newest-first — so "running P&L after this
-        transaction" means the same thing whichever way you read it.
+        transaction" means the same thing whichever way it is read.
         """
         sql = "SELECT * FROM transactions"
         args: list[Any] = []
@@ -335,7 +335,7 @@ def totals(transactions: Iterable[Transaction],
 
     BUY-AND-HOLD is computed over the SAME period as the grid: the money the
     grid put in at its first transaction, invested in the asset at that price
-    and held to the current mark. It is the honest comparison, because a grid
+    and held to the current mark. It is the fair comparison, because a grid
     that made 2% while the asset rose 40% did not work.
     """
     marks = marks or {}

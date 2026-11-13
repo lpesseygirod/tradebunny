@@ -11,12 +11,11 @@ roughly
 
 which is QUADRATIC in the position q. Two functions, one linear and one
 quadratic, cross exactly once. Past that crossing point every additional fill
-has negative expected value: the spread you collect is smaller than the risk
-you take on to collect it.
+has negative expected value: the spread collected is smaller than the risk
+taken on to collect it.
 
 Placing identical size at every rung implicitly assumes gamma = 0 — risk
-neutrality with unlimited capital. That is a real assumption, it is simply not
-one anybody would make on purpose.
+neutrality with unlimited capital.
 
 Two corrections, in order of how much they matter:
 
@@ -47,7 +46,7 @@ The hard bound is ON. It is a safety property and there is no version of this
 system where running past maximum inventory is correct.
 
 Skewing is OFF by default, because it changes every fill size and its benefit
-is a variance reduction that should be measured on your own pairs rather than
+is a variance reduction that should be measured on my own pairs rather than
 assumed. `backtest.run(size_skew=True)` A/Bs it.
 """
 
@@ -65,8 +64,8 @@ from typing import Optional
 #: bottom price, which cannot happen. Measured across 29 pairs and 2 500 bars,
 #: `bars_at_bound` was zero everywhere: the bound was decorative.
 #:
-#: 0.6 leaves the grid four tenths of its ladder unused at the bound, which is
-#: the point — the bound exists to stop the left tail, and a bound that only
+#: 0.6 leaves the grid four tenths of its ladder unused at the bound on
+#: purpose: the bound exists to stop the left tail, and a bound that only
 #: engages after the grid is fully loaded engages too late to do that.
 BOUND_FRACTION = 0.6
 
@@ -125,7 +124,7 @@ def buy_multiplier(q: float, q_max: float, skew: bool = False) -> float:
 def sell_multiplier(q: float, q_max: float, skew: bool = False) -> float:
     """How much of `base_size` to offer, given inventory q.
 
-    Skewed, this grows with inventory: the longer you are, the harder you work
+    Skewed, this grows with inventory: the longer the position, the harder it works
     to get flat. It is capped at 2.0 (reached at q = Q_max) so a single rung
     can never try to sell more than twice its share — the cap matters because
     the formula is unbounded above if Q_max is ever misconfigured small.

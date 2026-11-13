@@ -201,7 +201,7 @@ class TestHappyPath:
         assert plans[0].validate() == []
 
     def test_the_plan_is_only_proposed(self, scanned):
-        """Nothing is approved by a scan. The owner decides."""
+        """Nothing is approved by a scan. I decide."""
         plans, _, _ = scanned
         assert plans[0].status is Status.PROPOSED
 
@@ -252,7 +252,7 @@ class TestEmptyIsACorrectAnswer:
 
 
 class TestRejectionsAreLogged:
-    """'So I can see why a quiet day was quiet.'"""
+    """So I can see why a quiet day was quiet."""
 
     def test_each_gate_failure_is_recorded_with_its_reason(self, control):
         plans, report, _ = run_scan({"AAA-USDT": trend_series()}, control=control)
@@ -358,9 +358,8 @@ class TestRiskSizing:
         old_distance = (lower - stop) / lower           # 4.26%
         old = 100_000.0 * 0.02 / old_distance
         # avg entry 98 -> real loss fraction 8.16%, so the old formula sized
-        # 1.9x too large. On this geometry that is 49% smaller, not the ~60%
-        # in the brief; the exact figure depends on how wide the range is
-        # relative to the stop distance.
+        # 1.9x too large. On this geometry that is 49% smaller; the exact
+        # figure depends on how wide the range is relative to the stop distance.
         assert new < old
         assert 0.40 < (1 - new / old) < 0.60
 
@@ -438,7 +437,7 @@ class TestSizingInTheScan:
         Spacing is set at the fee floor, which maximises the level count — a
         typical band comes out around 22 lines. At 500 of capital split three
         ways the per-level order is ~7, under the exchange minimum, so the
-        honest answer is no proposal rather than a plan that cannot execute.
+        right answer is no proposal rather than a plan that cannot execute.
         The fix is more capital, fewer concurrent grids, or a wider spacing —
         never a lower minimum.
         """
@@ -604,7 +603,7 @@ class TestGatesAreNotSoftened:
     def test_the_proposal_cap_is_three(self):
         assert analyst.MAX_PROPOSALS == 3
 
-    def test_the_stop_constants_are_what_we_documented(self):
+    def test_the_stop_constants_are_as_documented(self):
         assert analyst.STOP_ATR_MULTIPLE == 3.0
         assert analyst.STOP_RANGE_FRACTION == 0.20
 
@@ -962,7 +961,7 @@ class TestFeesAreRecorded:
 
 
 class TestTheAtrFloorTracksTheFees:
-    """'that level is now 2.5x wider on some fee tiers'"""
+    """That level is 2.5x wider on some fee tiers."""
 
     def _assess(self, fees):
         c = good_series()
@@ -1067,7 +1066,7 @@ class TestMultipleTestingCorrection:
         assert "95% confidence" in t and "sub-windows" in t
 
 
-# ============================================================ the three asks
+# ================================== permissivity, minSz, confidence
 
 from grid import confidence as conf
 from grid import sizing
@@ -1081,8 +1080,8 @@ def _write_permissivity(tmp_path, level):
 
 
 class TestPermissivityLevels:
-    """'exploratory must surface candidates that strict hides, with visibly
-    smaller sizes.'"""
+    """Exploratory surfaces candidates that strict hides, with visibly
+    smaller sizes."""
 
     def _scan_at(self, level, control, monkeypatch, tmp_path, capital):
         monkeypatch.setattr(analyst, "CONFIG_PATH",
@@ -1209,7 +1208,7 @@ class TestConfidenceReachesThePlan:
         assert back.kelly_full == plans[0].kelly_full
 
 
-# ================================================== freshness, as required
+# ================================================================ freshness
 
 class StaleSource(FakeSource):
     """Serves candles whose newest bar closed long ago."""
@@ -1225,7 +1224,7 @@ class StaleSource(FakeSource):
 
 
 class TestStaleCandlesBlockAProposal:
-    """'Stale data must not silently produce a confident-looking proposal.'"""
+    """Stale data must not silently produce a confident-looking proposal."""
 
     def test_a_fresh_scan_proposes(self, control):
         plans, _, _ = run_scan({"AAA-USDT": good_series()}, control=control)
@@ -1300,7 +1299,7 @@ class TestSuspendedInstrumentsAreRejected:
 
 
 class TestFeeFallbackOnFailure:
-    """'never the optimistic one'"""
+    """Never the optimistic one."""
 
     def test_a_failed_fetch_uses_the_pessimistic_rate(self, control):
         src = FakeSource({"AAA-USDT": good_series()}, fee=None)
@@ -1346,7 +1345,7 @@ class TestFreshnessIsRecorded:
 
 
 class TestEveryRejectionIsScored:
-    """'zero with a best of 0.48 means something very different from 0.05'"""
+    """Zero with a best of 0.48 means something very different from 0.05."""
 
     def test_gate_rejected_candidates_still_get_a_score(self, control):
         src = FakeSource({"AAA-USDT": good_series(), "BBB-USDT": trend_series()})

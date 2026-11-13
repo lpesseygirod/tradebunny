@@ -3,11 +3,11 @@
 A grid backtest is unusually easy to make lie, and every lie flatters the
 result. The three that matter, and what this module does about them:
 
-  1. **Intraday fills you never got.** The tempting version of this code checks
+  1. **Intraday fills that never happened.** The tempting version of this code checks
      whether a candle's LOW touched a buy level and books the fill. But a low is
-     a single print — it says the price traded there, not that your resting
+     a single print — it says the price traded there, not that a resting
      order was at the front of the queue when it did. On a wick through a level
-     the honest answer is "possibly". Booking it as a fill invents cycles, and
+     the only fair answer is "possibly". Booking it as a fill invents cycles, and
      cycles are the entire product here. **This module reads closing prices and
      nothing else.** `run()` does not accept highs or lows, so the mistake is
      not available. Fewer cycles will be counted than a real grid would have
@@ -26,19 +26,19 @@ result. The three that matter, and what this module does about them:
      funded simply does not happen, exactly as it would not on the exchange.
 
 The stop is honoured at the close that breaches it, not at `stop_below` itself.
-Price gaps; assuming you exited at your stop price is the fourth lie.
+Price gaps; assuming an exit at the stop price is the fourth lie.
 
 THREE MORE, all about execution quality rather than about prices:
 
-  5. **Slippage.** A limit order does not fill at exactly its price once you
-     account for the tick you cross to get filled and the fee-adjusted quote.
+  5. **Slippage.** A limit order does not fill at exactly its price once the tick
+     crossed to get filled and the fee-adjusted quote are counted.
      `slip` moves every buy up and every sell down, which is the direction that
      costs money on both legs of a cycle. At the default 5bps a round trip
      gives up 10bps — comparable to the maker fee itself, so a backtest that
      ignores it is out by roughly the whole fee model.
 
-  6. **Bare touches.** A close that lands exactly on a level does not mean your
-     order filled: you were somewhere in a queue. `fill_margin` requires the
+  6. **Bare touches.** A close that lands exactly on a level does not mean the
+     order filled: it was somewhere in a queue. `fill_margin` requires the
      close to cross the level by a margin before the fill is booked.
 
   7. **Gaps.** A bar that sweeps several levels at once is the case where a
@@ -46,7 +46,7 @@ THREE MORE, all about execution quality rather than about prices:
      levels one bar may fill, and the one it picks is the level nearest the
      close — the last one price reached, not the most profitable.
 
-     Honest caveat on this one: resting buy limits DO all sit on the book
+     Caveat: resting buy limits DO all sit on the book
      simultaneously, so a genuine sweep through five levels would fill all
      five. Capping at one is therefore pessimistic rather than accurate. It is
      the default because the cost of being wrong in that direction is a grid
@@ -81,7 +81,7 @@ DEFAULT_SLIP = 0.0005
 #: touch is not counted but a real crossing is.
 DEFAULT_FILL_MARGIN = 0.0002
 
-#: Levels one bar may fill. See rule 7 above — deliberately pessimistic.
+#: Levels one bar may fill. See rule 7 above; pessimistic on purpose.
 DEFAULT_MAX_FILLS_PER_BAR = 1
 
 #: How many days of recent history the BAND is drawn from, when walk_forward is
@@ -204,7 +204,7 @@ def run(plan: GridPlan, closes: Sequence[float], *, bars_per_day: float,
     `liquidation_maker` is False because a stop-out is not a patient order. The
     grid's own legs are resting limits and pay the maker fee; the forced exit
     on a breakout crosses the spread and pays taker. Set it True only to see
-    how much that assumption is costing you.
+    how much that assumption costs.
 
     `level_weights` sizes each rung separately. One multiplier per ladder
     price, lowest price first, scaled so the mean is 1.0 — so the ladder's TOTAL
@@ -227,7 +227,7 @@ def run(plan: GridPlan, closes: Sequence[float], *, bars_per_day: float,
 
     # Structural checks only. A plan that merely fails `plan.validate()` — too
     # tight to be worth trading, say — is still worth replaying, because seeing
-    # the bad number is how you learn it was a bad plan. But a plan whose ladder
+    # the bad number is how I learn it was a bad plan. But a plan whose ladder
     # cannot be constructed has no replay to run.
     if plan.upper <= plan.lower:
         raise ValueError(f"upper ({plan.upper}) must exceed lower ({plan.lower})")
@@ -328,7 +328,7 @@ def run(plan: GridPlan, closes: Sequence[float], *, bars_per_day: float,
                 qty = open_lots.pop(src)
                 buy_price = buy_fill_prices.pop(src, ladder[src])
                 if size_skew:
-                    # Sell harder the longer you are. Capped, and never more
+                    # Sell harder the longer the position. Capped, and never more
                     # than the lot actually held.
                     qty = min(qty * inventory.sell_multiplier(
                         units, q_max, True), units)
@@ -390,7 +390,7 @@ def run(plan: GridPlan, closes: Sequence[float], *, bars_per_day: float,
                 fees_paid += fill * qty * maker_fee
 
         # ---- the signalled exit, before the price stop -------------------
-        # Deliberately checked FIRST. The point of a signal exit is to leave on
+        # Checked FIRST. The point of a signal exit is to leave on
         # evidence rather than after the loss, so if both fire on the same bar
         # the signal is what took the position out.
         if exit_signal is not None and exit_signal[i]:
@@ -407,7 +407,7 @@ def run(plan: GridPlan, closes: Sequence[float], *, bars_per_day: float,
         # ---- the stop, checked after this bar's fills --------------------
         # Buys resting between the previous close and the stop would have filled
         # on the way down before the stop was reached, so they are booked first.
-        # That makes the stop-out worse, not better, which is the honest order.
+        # That makes the stop-out worse, not better, which is the realistic order.
         if price <= plan.stop_below:
             if units > 0:
                 cash += fees.sell_proceeds(price, units, maker=liquidation_maker)
@@ -476,12 +476,12 @@ def run(plan: GridPlan, closes: Sequence[float], *, bars_per_day: float,
 # Walk-forward
 # ---------------------------------------------------------------------------
 #
-# A single backtest over the whole history tells you almost nothing, because the
+# A single backtest over the whole history says almost nothing, because the
 # parameters were chosen by looking at that history. Range, spacing and level
-# count are all fitted quantities; fit them to the same data you score on and a
+# count are all fitted quantities; fit them to the data they are scored on and a
 # grid will look profitable on almost any series that happens to have oscillated.
 #
-# The split below is the cheapest honest test available: derive every parameter
+# The split below is the cheapest fair test available: derive every parameter
 # from the first stretch, then replay on the rest and never touch the dials
 # again. It cannot prove an edge — one split on one asset is one sample — but it
 # reliably catches the failure that matters, which is a plan tuned to a regime
@@ -594,7 +594,8 @@ def walk_forward(closes: Sequence[float], highs: Sequence[float],
 
     Nothing derived from the out-of-sample stretch reaches the plan: the range,
     the level count, the stop and the capital split are all computed from
-    `closes[:split_at]` and then frozen. Step 4 is a replay, not a re-fit.
+    `closes[:split_at]` and then frozen. The out-of-sample stretch is replayed,
+    not re-fit.
 
     `highs` and `lows` are used ONLY to describe the in-sample regime — the ATR
     and ADX recorded on the plan for provenance. They are never handed to
@@ -652,7 +653,7 @@ def walk_forward(closes: Sequence[float], highs: Sequence[float],
     if range_days and bars_per_day > 0:
         want = int(round(range_days * bars_per_day))
         # Never fewer than 20 bars (suggest_range's own floor) and never more
-        # than we have: a short history falls back to using all of it rather
+        # than there are: a short history falls back to using all of it rather
         # than refusing to fit.
         range_bars = max(20, min(len(in_closes), want))
     band_closes = in_closes[-range_bars:]
@@ -717,8 +718,8 @@ def walk_forward(closes: Sequence[float], highs: Sequence[float],
 
     ins, oos = in_result.total_return_pct, out_result.total_return_pct
 
-    # The spec is "out-of-sample positive AND at least half the in-sample
-    # return". The `ins > 0` clause is an addition: with a negative in-sample
+    # My rule is "out-of-sample positive AND at least half the in-sample
+    # return". The `ins > 0` clause is extra: with a negative in-sample
     # return, "at least half of it" is a NEGATIVE bar that any positive result
     # clears, so a plan that lost money on the data it was fitted to would be
     # reported as generalising. There is no edge there to retain — it is a

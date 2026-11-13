@@ -1,10 +1,9 @@
 """The risk engine: the council's only veto, in plain code.
 
-Agents argue and the CIO decides, but nothing is bought or sold until these
-functions agree. They read the mandate and the book and return a list of
-named checks, so the interface can show exactly which rule passed or blocked.
-No agent can change a number here; the CIO's conviction only picks between
-"starter" and "core", and code turns that into an amount.
+Nothing is bought or sold until these functions agree. Each returns named
+checks, so the interface can show which rule passed or blocked. No agent can
+change a number here: the CIO's conviction only picks "starter" or "core",
+and code turns that into an amount.
 
 Rules, from the committee reports:
   - only names in the mandate's universe; rejected names never
@@ -292,8 +291,8 @@ def health(book: Book, m: Mandate, benchmark_return: Optional[float] = None) -> 
 
     biggest = max(((t, book.weight(t)) for t in book.holdings if m.is_stock(t)),
                   key=lambda x: x[1], default=(None, 0.0))
-    # Price can carry a position over the cap; that is drift, flagged for the
-    # review rather than force-sold (the rebalance band decides).
+    # Price can carry a position over the cap: that's drift, flagged for
+    # review rather than force-sold.
     over = biggest[1] > lim.max_position + lim.rebalance_band / 2
     out.append(Check("Largest stock", not over,
                      f"{m.name_of(biggest[0]) if biggest[0] else '-'} at {_pct(biggest[1])}, "

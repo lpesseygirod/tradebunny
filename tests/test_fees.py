@@ -98,5 +98,5 @@ class TestValidation:
         with pytest.raises(ValueError):
             FeeModel(maker=bad)
 
-    def test_okx_constants_are_what_we_documented(self):
+    def test_okx_constants_are_as_documented(self):
         assert (OKX_SPOT_MAKER, OKX_SPOT_TAKER) == (0.0008, 0.0010)

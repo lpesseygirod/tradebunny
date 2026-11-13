@@ -3,7 +3,7 @@
 There used to be a model call here that wrote the approval note. It is gone.
 Every number in a proposal came from `metrics.py` and `rubric.py` already; the
 model was only ever rephrasing them, and a paragraph of fluent prose attached to
-a trading decision invites you to read the prose instead of the numbers. The
+a trading decision invites reading the prose instead of the numbers. The
 explanation is now a template over the same measurements, which means it cannot
 say anything the measurements do not, cannot be unavailable, cannot cost money,
 and cannot drift.
@@ -68,9 +68,9 @@ MIN_QUOTE_PER_LEVEL = 10.0
 #: Fallback fee rates, used when the account's real tier cannot be read.
 #:
 #: These are the EEA-regulated rates — 2.5x the global base tier — and they are
-#: deliberately the PESSIMISTIC end. An unavailable fee rate is an absence of
-#: information, and the safe reading of an absence is the expensive one: if we
-#: guessed the cheap tier and were wrong, every gate downstream would pass
+#: the PESSIMISTIC end on purpose. An unavailable fee rate is an absence of
+#: information, and the safe reading of an absence is the expensive one: if the
+#: cheap tier were guessed wrongly, every gate downstream would pass
 #: grids whose spacing cannot pay for the trading. Guessing expensive only ever
 #: rejects candidates that a later, successful fetch would restore.
 FALLBACK_MAKER = 0.0020
@@ -293,7 +293,7 @@ class ScanReport:
     fills_recorded: int = 0
     #: Permissivity level in force, and the candidates that scored below it.
     #: Recorded so a quiet day can be read as "here is what I am NOT showing
-    #: you and why" rather than as silence.
+    #: and why" rather than as silence.
     level: str = ""
     below_threshold: list[tuple[str, float]] = field(default_factory=list)
     #: Which fee rates this scan used, and whether they were live or the
@@ -433,12 +433,12 @@ def size_grid(available_quote: float, upper: float, stop_below: float,
     "2% risk" was closer to 5%.
 
     Approximating the average entry as the midpoint of (upper, stop_below) is
-    the honest simplification: lots are spread roughly evenly across that span
+    a fair simplification: lots are spread roughly evenly across that span
     by the time the stop is hit. It is not exact, but it errs toward assuming
     more exposure rather than less.
 
     Conviction does not enter into it — there is no term here for how good the
-    candidate looked, deliberately, because that is the term that turns a bad
+    candidate looked, because that is the term that turns a bad
     day into a large bad day.
 
     Then two ceilings, both from `control.json`: the absolute cap, and an equal
@@ -482,7 +482,7 @@ def describe(a: Assessment, plan: GridPlan, wf: WalkForwardResult, *,
     """The approval note, rendered from the measurements. No model involved.
 
     Every clause here is a direct restatement of a number that a gate already
-    tested. That is the point: the note cannot claim anything the measurements
+    tested. So the note cannot claim anything the measurements
     do not support, because there is nothing in it that is not a measurement.
     """
     m = a.measured
@@ -552,7 +552,7 @@ def describe(a: Assessment, plan: GridPlan, wf: WalkForwardResult, *,
         f"them.",
 
         # Both windows, on every proposal. The statistics and the band are
-        # measured over deliberately different stretches of history, and a
+        # measured over different stretches of history, and a
         # reader who assumes one window is reading the band as a year-long
         # claim when it is a six-week one.
         (f"Measured over two windows: the CHARACTER above (ADF, Hurst, ADX, "
@@ -605,12 +605,12 @@ def scan(universe: list[str], available_quote: float, bar: str = "1H", *,
         >>> for p in scan(["BTC-USDT", "ETH-USDT"], available_quote=500.0):
         ...     print(p.summary())
 
-    Every returned plan is PROPOSED and needs your approval before anything
+    Every returned plan is PROPOSED and needs my approval before anything
     happens. Nothing here places an order.
 
     TWO WINDOWS. `statistics_days` (long) decides whether the asset is the
     KIND of thing a grid works on. `range_days` (short) decides WHERE the band
-    goes. They are deliberately different lengths and both are printed on every
+    goes. They are different lengths on purpose and both are printed on every
     proposal and every rejection — see `Candidate.windows`.
 
     `source` is the market-data module (defaults to `grid.okx`), injected so
@@ -875,7 +875,7 @@ def scan(universe: list[str], available_quote: float, bar: str = "1H", *,
             per_level = quote / (levels + 1) if quote > 0 else 0.0
 
         # The MIN_QUOTE_PER_LEVEL floor is a Kelly-mode guard. Calibration mode
-        # deliberately sizes at the exchange minimum, which is below that flat
+        # sizes at the exchange minimum, which is below that flat
         # floor by construction — it has its own feasibility check above.
         if calib is None and (quote <= 0 or per_level < MIN_QUOTE_PER_LEVEL):
             cand.stage = "sizing"
@@ -986,7 +986,7 @@ def scan(universe: list[str], available_quote: float, bar: str = "1H", *,
 
     # --- 6d. rank, then cap -----------------------------------------------
     # Capped by the control file as well as by MAX_PROPOSALS: proposing more
-    # grids than the executor is allowed to run concurrently would hand you
+    # grids than the executor is allowed to run concurrently would hand me
     # approvals that cannot all be acted on.
     limit = min(MAX_PROPOSALS, max(0, state.max_concurrent_grids))
     survivors.sort(key=lambda t: t[0].score, reverse=True)
